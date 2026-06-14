@@ -152,6 +152,7 @@ def list_members(group_id):
         result.append({
             "id": str(m.id),
             "user_id": str(m.user_id),
+            "clerk_id": member_user.clerk_id if member_user else None,
             "email": member_user.email if member_user else "",
             "full_name": member_user.full_name if member_user else "",
             "avatar_url": member_user.avatar_url if member_user else None,

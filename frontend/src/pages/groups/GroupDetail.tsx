@@ -90,7 +90,7 @@ export default function GroupDetail() {
     }
   }
 
-  const isAdmin = members?.some(m => m.user_id === user?.id && m.role === "admin" && m.is_active)
+  const isAdmin = members?.some(m => m.clerk_id === user?.id && m.role === "admin" && m.is_active)
 
   const handleAddMember = (email: string) => {
     addMemberMutation.mutate({ email, role: addRole })
@@ -321,7 +321,7 @@ export default function GroupDetail() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-green-400">Active</span>
-                        {isAdmin && member.user_id !== user?.id && (
+                        {isAdmin && member.clerk_id !== user?.id && (
                           <Button
                             variant="ghost"
                             size="sm"

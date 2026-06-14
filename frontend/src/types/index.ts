@@ -24,6 +24,7 @@ export interface Group {
 export interface GroupMember {
   id: string
   user_id: string
+  clerk_id: string | null
   email: string
   full_name: string | null
   avatar_url: string | null
