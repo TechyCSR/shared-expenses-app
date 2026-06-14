@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/services/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -13,6 +13,7 @@ export default function CreateExpense() {
   const { groupId } = useParams<{ groupId: string }>()
   const { user } = useUser()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   
   // Form state
   const [description, setDescription] = useState("")
@@ -72,7 +73,12 @@ export default function CreateExpense() {
       })
       return res.data.data
     },
-    onSuccess: () => navigate(`/groups/${groupId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", groupId] })
+      queryClient.invalidateQueries({ queryKey: ["balances", groupId] })
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+      navigate(`/groups/${groupId}`)
+    },
     onError: (err: any) => {
       console.error("Failed to create expense:", err)
       alert(err?.response?.data?.error?.message || "Failed to create expense. Make sure the payer is a group member on the expense date.")

@@ -23,6 +23,8 @@ export default function GroupSettings() {
   const [addRole, setAddRole] = useState("member")
   const [groupName, setGroupName] = useState("")
   const [editingName, setEditingName] = useState(false)
+  const [groupCurrency, setGroupCurrency] = useState("")
+  const [editingCurrency, setEditingCurrency] = useState(false)
 
   const { data: group, isLoading: groupLoading } = useQuery({
     queryKey: ["group", groupId],
@@ -43,13 +45,14 @@ export default function GroupSettings() {
   })
 
   const updateGroupMutation = useMutation({
-    mutationFn: async (data: { name?: string; description?: string }) => {
-      const res = await api.put(`/groups/${groupId}`, data)
+    mutationFn: async (data: { name?: string; description?: string; default_currency?: string }) => {
+      const res = await api.patch(`/groups/${groupId}`, data)
       return res.data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["group", groupId] })
       setEditingName(false)
+      setEditingCurrency(false)
     },
   })
 
@@ -167,7 +170,42 @@ export default function GroupSettings() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5 text-gray-400">Default Currency</label>
-              <p className="text-white">{group.default_currency}</p>
+              {isAdmin && editingCurrency ? (
+                <div className="flex gap-2">
+                  <select
+                    value={groupCurrency}
+                    onChange={(e) => setGroupCurrency(e.target.value)}
+                    className="flex-1 px-3 py-2 border-2 border-gray-600 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-white"
+                    autoFocus
+                  >
+                    <option value="INR">INR - Indian Rupee</option>
+                    <option value="USD">USD - US Dollar</option>
+                    <option value="EUR">EUR - Euro</option>
+                    <option value="GBP">GBP - British Pound</option>
+                    <option value="JPY">JPY - Japanese Yen</option>
+                    <option value="AUD">AUD - Australian Dollar</option>
+                    <option value="CAD">CAD - Canadian Dollar</option>
+                  </select>
+                  <Button size="sm" onClick={() => {
+                    if (groupCurrency !== group.default_currency) {
+                      updateGroupMutation.mutate({ default_currency: groupCurrency })
+                    } else {
+                      setEditingCurrency(false)
+                    }
+                  }}>Save</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditingCurrency(false)}>Cancel</Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="text-white">{group.default_currency}</p>
+                  {isAdmin && (
+                    <Button size="sm" variant="ghost" onClick={() => { setGroupCurrency(group.default_currency); setEditingCurrency(true) }}>
+                      Change
+                    </Button>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-1">New expenses will default to this currency. Existing expenses keep their original currency.</p>
             </div>
           </CardContent>
         </Card>

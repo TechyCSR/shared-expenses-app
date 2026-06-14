@@ -122,13 +122,12 @@ class ExpenseService:
 
         if "participants" in kwargs:
             participants = kwargs.pop("participants")
-            self.session.execute(
+            # Delete existing participants
+            existing = self.session.execute(
                 select(ExpenseParticipant).where(ExpenseParticipant.expense_id == expense_id)
-            )
-            for p in self.session.execute(
-                select(ExpenseParticipant).where(ExpenseParticipant.expense_id == expense_id)
-            ):
-                self.session.delete(p.scalar())
+            ).scalars().all()
+            for p in existing:
+                self.session.delete(p)
 
             participant_data = self._calculate_shares(
                 expense.group_id,

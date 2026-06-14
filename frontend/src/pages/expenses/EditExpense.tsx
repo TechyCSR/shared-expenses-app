@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router-dom"
-import { useQuery, useMutation } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import api from "@/services/api"
 import { Card, CardContent } from "@/components/ui/Card"
@@ -12,6 +12,7 @@ import { formatAmount } from "@/utils/format"
 export default function EditExpense() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
   const [currency, setCurrency] = useState("INR")
@@ -85,7 +86,7 @@ export default function EditExpense() {
         participants = (members?.filter(m => m.is_active).map(m => ({ user_id: m.user_id })) || [])
       }
 
-      const res = await api.put(`/groups/${groupId}/expenses/${expenseId}`, {
+      const res = await api.patch(`/groups/${groupId}/expenses/${expenseId}`, {
         description,
         amount: parseFloat(amount),
         currency,
@@ -97,6 +98,9 @@ export default function EditExpense() {
       return res.data
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", groupId] })
+      queryClient.invalidateQueries({ queryKey: ["expense", expenseId] })
+      queryClient.invalidateQueries({ queryKey: ["balances", groupId] })
       navigate(`/groups/${groupId}/expenses/${expenseId}`)
     },
     onError: (err: any) => {

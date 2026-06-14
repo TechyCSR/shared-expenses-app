@@ -138,19 +138,26 @@ export default function GroupDetail() {
             ) : (
               <div className="space-y-2">
                 {expensesData.expenses.map((expense: Expense) => (
-                  <Link key={expense.id} to={`/groups/${id}/expenses/${expense.id}`}>
-                    <Card className="bg-[#0a0a0a] border-gray-800 hover:border-gray-700 transition-colors cursor-pointer py-3 px-4">
-                      <div className="flex items-center justify-between">
+                  <Card key={expense.id} className="bg-[#0a0a0a] border-gray-800 hover:border-gray-700 transition-colors py-3 px-4">
+                    <div className="flex items-center justify-between">
+                      <Link to={`/groups/${id}/expenses/${expense.id}`} className="flex-1">
                         <div>
                           <p className="font-medium text-sm text-white">{expense.description}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
                             {expense.expense_date} · {expense.payer_name || expense.paid_by.slice(0, 8)}
                           </p>
                         </div>
+                      </Link>
+                      <div className="flex items-center gap-3">
                         <p className="font-medium text-sm text-white">{formatAmount(expense.amount)} {expense.currency}</p>
+                        <Link to={`/groups/${id}/expenses/${expense.id}/edit`} className="text-gray-400 hover:text-white p-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </Link>
                       </div>
-                    </Card>
-                  </Link>
+                    </div>
+                  </Card>
                 ))}
               </div>
             )}
