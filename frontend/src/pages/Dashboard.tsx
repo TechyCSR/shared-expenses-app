@@ -53,7 +53,7 @@ export default function Dashboard() {
           <CardContent className="py-12 text-center">
             <p className="text-red-400 mb-4">Failed to load groups</p>
             <Link to="/login">
-              <Button variant="outline">Sign In</Button>
+              <Button variant="secondary">Sign In</Button>
             </Link>
           </CardContent>
         </Card>

@@ -112,7 +112,18 @@ class BalanceService:
         for b in balances["balances"]:
             if b["user_id"] == user_id:
                 return b
-        raise NotFoundError("User balance not found")
+        # If user has no expenses/settlements, return zero balance
+        return {
+            "user_id": user_id,
+            "balance": Decimal("0"),
+            "currency": "INR",
+            "breakdown": {
+                "expenses_paid": [],
+                "expenses_owed": [],
+                "settlements_received": [],
+                "settlements_sent": [],
+            },
+        }
 
     def _get_expenses_in_range(
         self,
