@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import api from "@/services/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import Layout from "@/components/Layout"
 
 export default function CreateGroup() {
   const navigate = useNavigate()
@@ -24,14 +25,8 @@ export default function CreateGroup() {
   })
 
   return (
-    <div className="min-h-screen bg-black">
-      <header className="border-b border-gray-800">
-        <div className="max-w-3xl mx-auto px-6 py-4">
-          <Link to="/groups" className="text-xl font-semibold text-white">Shared Expenses</Link>
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-6 py-8">
+    <Layout>
+      <div className="max-w-3xl mx-auto px-6 py-8">
         <Card className="bg-[#0a0a0a] border-gray-800">
           <CardHeader>
             <CardTitle className="text-white">Create Group</CardTitle>
@@ -79,7 +74,7 @@ export default function CreateGroup() {
             </form>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </Layout>
   )
 }
