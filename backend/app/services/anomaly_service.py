@@ -143,29 +143,78 @@ class AnomalyDetector:
         self.member_names = self._build_name_map()
 
     def _build_name_map(self) -> dict:
+        """Build name lookup map with multiple key variations for each member."""
         name_map = {}
         for member in self.group_members:
             name_lower = member.get("full_name", "").lower().strip()
             if name_lower:
                 name_map[name_lower] = member
-            name_map[member.get("email", "").lower()] = member
+            email_lower = member.get("email", "").lower()
+            if email_lower:
+                name_map[email_lower] = member
+            # Store first name as fallback
             first_name = member.get("full_name", "").split()[0].lower() if member.get("full_name") else ""
-            if first_name:
+            if first_name and first_name not in name_map:
                 name_map[first_name] = member
         return name_map
 
     def fuzzy_match_name(self, name: str) -> Optional[dict]:
-        clean = name.strip().lower()
-        clean = re.sub(r"[^a-z0-9\s]", "", clean)
+        """Match a name to a group member. Handles variations like:
+        - Case differences (priya vs Priya)
+        - Extra context (Dev's friend Kabir -> Kabir)
+        - Suffix variations (Priya vs Priya S)
+        - Partial names (rohan -> Rohan)
+        """
+        name = name.strip()
+        name_lower = name.lower()
+        
+        # Step 1: Try direct match
+        clean = re.sub(r"[^a-z0-9\s]", "", name_lower)
         if clean in self.member_names:
             return self.member_names[clean]
 
+        # Step 2: Extract name parts from contextual phrases
+        # Handle: "Dev's friend Kabir", "Kabir (Dev's friend)", "Friend: Kabir", etc.
+        context_patterns = [
+            r"friend[s]?\s+(\w+)",      # "friend Kabir" -> Kabir
+            r"(\w+)\s+'?s\s+friend",    # "Dev's friend" or "Dev friend" -> Dev (but we want the other name)
+            r"with\s+(\w+)",            # "with Kabir"
+            r"and\s+(\w+)",             # "and Kabir"
+        ]
+        
+        # For "Dev's friend Kabir", extract "Kabir"
+        for pattern in context_patterns:
+            match = re.search(pattern, name_lower)
+            if match:
+                extracted = match.group(1).strip()
+                extracted_clean = re.sub(r"[^a-z0-9]", "", extracted)
+                if extracted_clean in self.member_names:
+                    return self.member_names[extracted_clean]
+        
+        # Step 3: Split by common delimiters and try each part
+        parts = re.split(r"[;,_\-\(\)]+\s*|\s+friend\s+", name_lower)
+        for part in parts:
+            part = part.strip()
+            if not part or len(part) < 2:
+                continue
+            # Remove possessive 's
+            part = re.sub(r"'s$", "", part)
+            clean = re.sub(r"[^a-z0-9\s]", "", part)
+            
+            if clean in self.member_names:
+                return self.member_names[clean]
+            
+            # Try tokens within the part
+            tokens = clean.split()
+            for token in tokens:
+                if len(token) >= 3 and token in self.member_names:
+                    return self.member_names[token]
+
+        # Step 4: Try prefix matching on full keys (but prefer exact matches)
         tokens = clean.split()
-        for token in tokens:
-            if token in self.member_names:
-                return self.member_names[token]
+        if len(tokens) == 1 and len(tokens[0]) >= 3:
             for key in self.member_names:
-                if key.startswith(token) or token.startswith(key):
+                if key.startswith(tokens[0]) and " " not in key:  # Prefer single-word keys (base names)
                     return self.member_names[key]
 
         return None
@@ -191,7 +240,19 @@ class AnomalyDetector:
 
         for idx, row in enumerate(rows, start=1):
             row_lower = row.get("description", "").lower()
-            if any(kw in row_lower for kw in ["paid back", "settlement", "deposit", "reimbursed"]):
+            split_type = str(row.get("split_type", "")).strip().lower()
+            paid_by = str(row.get("paid_by", "")).strip()
+            split_with = str(row.get("split_with", "")).strip()
+            
+            # Settlement indicators:
+            # 1. Description keywords
+            is_settlement_keyword = any(kw in row_lower for kw in ["paid back", "settlement", "deposit", "reimbursed", "reimbursement"])
+            # 2. No split_type but has a specific person (1-on-1)
+            is_1on1_settlement = not split_type and split_with and ";" not in split_with and paid_by
+            # 3. Description pattern: "X paid Y back" or "X owes Y"
+            is_payment_pattern = re.search(r"\w+\s+paid\s+\w+\s+back", row_lower) or re.search(r"\w+\s+owes\s+\w+", row_lower)
+            
+            if is_settlement_keyword or is_1on1_settlement or is_payment_pattern:
                 anomalies.append(AnomalyResult(
                     row_number=idx,
                     anomaly_type="settlement_as_expense",
@@ -521,14 +582,35 @@ class AnomalyDetector:
 
         return results
 
+    def _normalize_amount(self, amount_str: str) -> Decimal:
+        """Normalize amount string to Decimal."""
+        try:
+            cleaned = str(amount_str).replace(",", "").replace(" ", "").strip()
+            return Decimal(cleaned)
+        except Exception:
+            return Decimal("0")
+
+    def _normalize_description(self, desc: str) -> str:
+        """Normalize description for comparison - lowercase, remove special chars, extra spaces."""
+        desc = desc.lower().strip()
+        # Remove common prefixes/suffixes
+        desc = re.sub(r"^[\-\s]+\s*", "", desc)  # leading dashes/spaces
+        desc = re.sub(r"\s*[\-\s]+$", "", desc)  # trailing dashes/spaces
+        # Normalize multiple spaces
+        desc = re.sub(r"\s+", " ", desc)
+        return desc
+
     def _check_duplicates(self, rows: list[dict], existing_expenses: list[dict]) -> list[AnomalyResult]:
         results = []
         seen = {}
         for idx, row in enumerate(rows, start=1):
+            # Normalize amount for key
+            norm_amount = str(self._normalize_amount(row.get("amount", "")))
+            norm_desc = self._normalize_description(row.get("description", ""))
             key = (
                 str(row.get("date", "")).strip(),
-                str(row.get("description", "")).strip().lower(),
-                str(row.get("amount", "")).strip(),
+                norm_desc,
+                norm_amount,
                 str(row.get("paid_by", "")).strip().lower(),
             )
             if key in seen:
@@ -548,15 +630,18 @@ class AnomalyDetector:
                 seen[key] = idx
 
         for idx, row in enumerate(rows, start=1):
+            row_amount = self._normalize_amount(row.get("amount", ""))
+            row_desc_norm = self._normalize_description(row.get("description", ""))
+            
             for existing in existing_expenses:
-                desc_sim = self._text_similarity(
-                    str(row.get("description", "")).lower(),
-                    existing.get("description", "").lower(),
-                )
+                existing_amount = Decimal(str(existing.get("amount", "0")))
+                existing_desc_norm = self._normalize_description(existing.get("description", ""))
+                
+                desc_sim = self._text_similarity(row_desc_norm, existing_desc_norm)
                 if (
-                    abs(float(row.get("amount", 0)) - float(existing.get("amount", 0))) < 1
-                    and desc_sim > 0.7
-                ):
+                    row_amount == existing_amount
+                    or (row_amount > 0 and abs(row_amount - existing_amount) < Decimal("1"))
+                ) and desc_sim > 0.7:
                     results.append(AnomalyResult(
                         row_number=idx,
                         anomaly_type="duplicate_expense",
