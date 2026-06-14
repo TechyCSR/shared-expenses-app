@@ -6,6 +6,7 @@ import HomePage from "./pages/HomePage"
 import GroupsList from "./pages/groups/GroupsList"
 import CreateGroup from "./pages/groups/CreateGroup"
 import GroupDetail from "./pages/groups/GroupDetail"
+import GroupSettings from "./pages/groups/GroupSettings"
 import ExpensesList from "./pages/expenses/ExpensesList"
 import CreateExpense from "./pages/expenses/CreateExpense"
 import ExpenseDetail from "./pages/expenses/ExpenseDetail"
@@ -113,6 +114,7 @@ export default function App() {
         <Route path="/groups" element={<ProtectedRoute><GroupsList /></ProtectedRoute>} />
         <Route path="/groups/new" element={<ProtectedRoute><CreateGroup /></ProtectedRoute>} />
         <Route path="/groups/:id" element={<ProtectedRoute><GroupDetail /></ProtectedRoute>} />
+        <Route path="/groups/:groupId/settings" element={<ProtectedRoute><GroupSettings /></ProtectedRoute>} />
         <Route path="/groups/:groupId/expenses" element={<ProtectedRoute><ExpensesList /></ProtectedRoute>} />
         <Route path="/groups/:groupId/expenses/new" element={<ProtectedRoute><CreateExpense /></ProtectedRoute>} />
         <Route path="/groups/:groupId/expenses/:expenseId" element={<ProtectedRoute><ExpenseDetail /></ProtectedRoute>} />

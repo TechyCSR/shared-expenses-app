@@ -1,26 +1,21 @@
 import { useState } from "react"
-import { useParams, useNavigate, Link } from "react-router-dom"
+import { useParams, Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import api from "@/services/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Card, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import Layout from "@/components/Layout"
+import Loading from "@/components/ui/Loading"
 import type { Group, GroupMember, Expense } from "@/types"
-import { useClerk, useUser } from "@clerk/clerk-react"
+import { useUser } from "@clerk/clerk-react"
 
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>()
   const { user } = useUser()
-  const { signOut } = useClerk()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<"expenses" | "members" | "balances">("expenses")
-  const [showAddMember, setShowAddMember] = useState(false)
-  const [addEmail, setAddEmail] = useState("")
-  const [addRole, setAddRole] = useState("member")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<Array<{id: string; clerk_id: string; email: string; full_name: string | null; avatar_url: string | null}>>([])
-  const [searching, setSearching] = useState(false)
 
-  const { data: group } = useQuery({
+  const { data: group, isLoading: groupLoading } = useQuery({
     queryKey: ["group", id],
     queryFn: async () => {
       const res = await api.get(`/groups/${id}`)
@@ -29,7 +24,7 @@ export default function GroupDetail() {
     enabled: !!id,
   })
 
-  const { data: members } = useQuery({
+  const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: ["group-members", id],
     queryFn: async () => {
       const res = await api.get(`/groups/${id}/members`)
@@ -38,7 +33,7 @@ export default function GroupDetail() {
     enabled: !!id,
   })
 
-  const { data: expensesData } = useQuery({
+  const { data: expensesData, isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses", id],
     queryFn: async () => {
       const res = await api.get(`/groups/${id}/expenses`)
@@ -47,71 +42,17 @@ export default function GroupDetail() {
     enabled: !!id,
   })
 
-  const addMemberMutation = useMutation({
-    mutationFn: async ({ email, role }: { email: string; role: string }) => {
-      const res = await api.post(`/groups/${id}/members`, { email, role })
-      return res.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["group-members", id] })
-      setShowAddMember(false)
-      setAddEmail("")
-      setSearchResults([])
-    },
-  })
-
-  const removeMemberMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await api.delete(`/groups/${id}/members/${userId}`)
-      return res.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["group-members", id] })
-    },
-  })
-
-  const searchUsers = async (query: string) => {
-    if (!query || query.length < 2) {
-      setSearchResults([])
-      return
-    }
-    setSearching(true)
-    try {
-      const res = await api.get(`/users/search?q=${encodeURIComponent(query)}`)
-      const users: Array<{id: string; clerk_id: string; email: string; full_name: string | null; avatar_url: string | null}> = res.data.data.users || []
-      // Filter out existing members (compare by internal id and clerk_id)
-      const existingInternalIds = members?.filter(m => m.is_active).map(m => m.user_id) || []
-      const existingClerkIds = members?.filter(m => m.is_active).map(m => m.clerk_id).filter(Boolean) || []
-      const filtered = users.filter(u => 
-        !existingInternalIds.includes(u.id) && 
-        !existingClerkIds.includes(u.clerk_id)
-      )
-      setSearchResults(filtered)
-    } catch (err) {
-      console.error("Search failed:", err)
-      setSearchResults([])
-    } finally {
-      setSearching(false)
-    }
-  }
-
-  const isAdmin = members?.some(m => m.clerk_id === user?.id && m.role === "admin" && m.is_active)
-
-  const handleAddMember = (email: string) => {
-    addMemberMutation.mutate({ email, role: addRole })
-  }
-
-  const handleRemoveMember = (userId: string, fullName: string) => {
-    if (confirm(`Are you sure you want to remove ${fullName || "this member"} from the group?`)) {
-      removeMemberMutation.mutate(userId)
-    }
+  if (groupLoading || membersLoading) {
+    return <Layout><Loading message="Loading group..." /></Layout>
   }
 
   if (!group) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
+      <Layout>
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <p className="text-gray-400">Group not found</p>
+        </div>
+      </Layout>
     )
   }
 
@@ -122,44 +63,50 @@ export default function GroupDetail() {
   ]
 
   const activeMembers = members?.filter(m => m.is_active) || []
-  const pastMembers = members?.filter(m => !m.is_active) || []
 
   return (
-    <div className="min-h-screen bg-black">
-      <header className="border-b border-gray-800">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+    <Layout>
+      <div className="max-w-5xl mx-auto px-6 py-6">
+        {/* Group Header */}
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Link to="/" className="text-xl font-semibold text-white">Shared Expenses</Link>
-            <span className="text-gray-600">/</span>
-            <h1 className="text-lg font-medium text-white">{group.name}</h1>
+            <Link to="/dashboard" className="text-gray-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-xl font-semibold text-white">{group.name}</h1>
+              <p className="text-sm text-gray-500">{activeMembers.length} members · {group.default_currency}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {user && (
-              <img
-                src={user.imageUrl}
-                alt={user.fullName || "User"}
-                className="w-8 h-8 rounded-full"
-              />
-            )}
-            <Link to={`/groups/${id}/expenses/new`}>
-              <Button size="sm" className="bg-white text-black hover:bg-gray-200">Add Expense</Button>
+          <div className="flex items-center gap-2">
+            <Link to={`/groups/${id}/settings`}>
+              <Button variant="secondary" size="sm">
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Settings
+              </Button>
             </Link>
-            <Link to={`/groups/${id}/import`}>
-              <Button variant="secondary" size="sm">Import CSV</Button>
-            </Link>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
-              onClick={() => signOut()}
-            >
-              Sign Out
-            </Button>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-6">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3 mb-6">
+          <Link to={`/groups/${id}/expenses/new`}>
+            <Button size="sm" className="bg-white text-black hover:bg-gray-200">+ Add Expense</Button>
+          </Link>
+          <Link to={`/groups/${id}/import`}>
+            <Button variant="secondary" size="sm">Import CSV</Button>
+          </Link>
+          <Link to={`/groups/${id}/settlements/new`}>
+            <Button variant="ghost" size="sm" className="text-gray-300">Record Settlement</Button>
+          </Link>
+        </div>
+
+        {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-gray-800">
           {tabs.map((t) => (
             <button
@@ -176,15 +123,12 @@ export default function GroupDetail() {
           ))}
         </div>
 
+        {/* Tab Content */}
         {tab === "expenses" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium text-white">Expenses</h2>
-              <Link to={`/groups/${id}/settlements/new`}>
-                <Button variant="ghost" size="sm" className="text-gray-300">Record Settlement</Button>
-              </Link>
-            </div>
-            {(!expensesData?.expenses || expensesData.expenses.length === 0) ? (
+            {expensesLoading ? (
+              <Loading message="Loading expenses..." />
+            ) : !expensesData?.expenses || expensesData.expenses.length === 0 ? (
               <Card className="bg-[#0a0a0a] border-gray-800">
                 <CardContent className="py-8 text-center">
                   <p className="text-gray-500 text-sm">No expenses yet</p>
@@ -214,173 +158,31 @@ export default function GroupDetail() {
 
         {tab === "members" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium text-white">Members</h2>
-              {isAdmin && (
-                <Button 
-                  size="sm" 
-                  variant="secondary"
-                  onClick={() => setShowAddMember(!showAddMember)}
-                >
-                  {showAddMember ? "Cancel" : "+ Add Member"}
-                </Button>
-              )}
-            </div>
-
-            {showAddMember && (
-              <Card className="bg-[#0a0a0a] border-gray-800 mb-4">
-                <CardContent className="py-4">
-                  <h3 className="text-sm font-medium text-white mb-3">Add Member to Group</h3>
-                  
-                  <div className="space-y-3">
+            <h3 className="text-sm font-medium text-gray-400 mb-3">Active Members ({activeMembers.length})</h3>
+            <div className="space-y-2">
+              {activeMembers.map((member) => (
+                <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <label className="text-xs text-gray-400 mb-1 block">Search by email or name</label>
-                      <input
-                        type="text"
-                        placeholder="Search by email or name..."
-                        className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-gray-500"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value)
-                          searchUsers(e.target.value)
-                        }}
-                      />
+                      <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
+                      <p className="text-xs text-gray-500">{member.email} · <span className="capitalize">{member.role}</span></p>
                     </div>
-
-                    {searchResults.length > 0 && (
-                      <div className="border border-gray-700 rounded divide-y divide-gray-700">
-                        {searchResults.map((u: any) => (
-                          <div key={u.id} className="p-2 flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-white">{u.full_name || "Unknown"}</p>
-                              <p className="text-xs text-gray-500">{u.email}</p>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleAddMember(u.email)}
-                              disabled={addMemberMutation.isPending}
-                            >
-                              Add
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {searchQuery.length >= 2 && searching && (
-                      <p className="text-xs text-gray-500">Searching...</p>
-                    )}
-
-                    {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                      <p className="text-xs text-gray-500">No users found</p>
-                    )}
-
-                    <div className="pt-2 border-t border-gray-700">
-                      <label className="text-xs text-gray-400 mb-1 block">Or enter email directly</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="email"
-                          placeholder="user@example.com"
-                          className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-gray-500"
-                          value={addEmail}
-                          onChange={(e) => setAddEmail(e.target.value)}
-                        />
-                        <select
-                          className="bg-black border border-gray-700 rounded px-2 py-2 text-white text-sm focus:outline-none focus:border-gray-500"
-                          value={addRole}
-                          onChange={(e) => setAddRole(e.target.value)}
-                        >
-                          <option value="member">Member</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                        <Button
-                          size="sm"
-                          onClick={() => handleAddMember(addEmail)}
-                          disabled={!addEmail || addMemberMutation.isPending}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                    </div>
+                    <span className="text-xs text-green-400">Active</span>
                   </div>
-
-                  {addMemberMutation.isError && (
-                    <p className="text-xs text-red-400 mt-2">Failed to add member. User may not exist.</p>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {activeMembers.length > 0 && (
-              <div className="space-y-2 mb-6">
-                <h3 className="text-sm font-medium text-gray-400">Active Members ({activeMembers.length})</h3>
-                {activeMembers.map((member) => (
-                  <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
-                        <p className="text-xs text-gray-500">
-                          {member.email} · <span className="capitalize">{member.role}</span> · Joined {new Date(member.joined_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-green-400">Active</span>
-                        {isAdmin && member.clerk_id !== user?.id && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                            onClick={() => handleRemoveMember(member.user_id, member.full_name || member.email)}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {pastMembers.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-400">Past Members ({pastMembers.length})</h3>
-                {pastMembers.map((member) => (
-                  <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4 opacity-60">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
-                        <p className="text-xs text-gray-500">
-                          {member.email} · Joined {new Date(member.joined_at).toLocaleDateString()} · Left {new Date(member.left_at!).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <span className="text-xs text-gray-500">Removed</span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {members?.length === 0 && (
-              <Card className="bg-[#0a0a0a] border-gray-800">
-                <CardContent className="py-8 text-center">
-                  <p className="text-gray-500 text-sm">No members in this group</p>
-                </CardContent>
-              </Card>
-            )}
+                </Card>
+              ))}
+            </div>
           </div>
         )}
 
         {tab === "balances" && (
           <div>
-            <h2 className="text-lg font-medium text-white mb-4">Balances</h2>
             <Link to={`/groups/${id}/balances`}>
               <Button variant="secondary" size="sm">View Detailed Balances</Button>
             </Link>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </Layout>
   )
 }
