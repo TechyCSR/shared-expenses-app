@@ -1,4 +1,5 @@
-from flask import Flask
+import traceback
+from flask import Flask, jsonify
 from flask_cors import CORS
 
 from app.config import settings
@@ -21,6 +22,20 @@ def create_app() -> Flask:
     app.register_blueprint(balances.bp, url_prefix="/api/v1")
     app.register_blueprint(imports.bp, url_prefix="/api/v1")
     app.register_blueprint(users.bp, url_prefix="/api/v1/users")
+
+    @app.errorhandler(404)
+    def not_found(e):
+        return jsonify({"success": False, "error": {"code": "NOT_FOUND", "message": "Resource not found"}}), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        return jsonify({"success": False, "error": {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed"}}), 405
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        if settings.DEBUG:
+            traceback.print_exc()
+        return jsonify({"success": False, "error": {"code": "INTERNAL_ERROR", "message": "Internal server error"}}), 500
 
     @app.route("/health")
     def health():
