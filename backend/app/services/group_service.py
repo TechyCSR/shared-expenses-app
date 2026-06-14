@@ -13,7 +13,7 @@ class GroupService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_group(
+    def create_group(
         self,
         name: str,
         created_by: uuid.UUID,
@@ -27,7 +27,7 @@ class GroupService:
             created_by=created_by,
         )
         self.session.add(group)
-        await self.session.flush()
+        self.session.flush()
 
         membership = GroupMember(
             group_id=group.id,
@@ -35,11 +35,11 @@ class GroupService:
             role="admin",
         )
         self.session.add(membership)
-        await self.session.flush()
+        self.session.flush()
         return group
 
-    async def get_group(self, group_id: uuid.UUID) -> Group:
-        result = await self.session.execute(
+    def get_group(self, group_id: uuid.UUID) -> Group:
+        result = self.session.execute(
             select(Group).where(Group.id == group_id)
         )
         group = result.scalar_one_or_none()
@@ -47,8 +47,8 @@ class GroupService:
             raise NotFoundError("Group not found")
         return group
 
-    async def get_user_groups(self, user_id: uuid.UUID) -> list[Group]:
-        result = await self.session.execute(
+    def get_user_groups(self, user_id: uuid.UUID) -> list[Group]:
+        result = self.session.execute(
             select(Group)
             .join(GroupMember, Group.id == GroupMember.group_id)
             .where(
@@ -59,7 +59,7 @@ class GroupService:
         )
         return list(result.scalars().all())
 
-    async def update_group(
+    def update_group(
         self,
         group_id: uuid.UUID,
         user_id: uuid.UUID,
@@ -67,8 +67,8 @@ class GroupService:
         description: Optional[str] = None,
         default_currency: Optional[str] = None,
     ) -> Group:
-        group = await self.get_group(group_id)
-        await self._check_admin(group_id, user_id)
+        group = self.get_group(group_id)
+        self._check_admin(group_id, user_id)
 
         if name is not None:
             group.name = name
@@ -77,30 +77,30 @@ class GroupService:
         if default_currency is not None:
             group.default_currency = default_currency
 
-        await self.session.flush()
+        self.session.flush()
         return group
 
-    async def delete_group(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        group = await self.get_group(group_id)
-        await self._check_admin(group_id, user_id)
-        await self.session.delete(group)
+    def delete_group(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        group = self.get_group(group_id)
+        self._check_admin(group_id, user_id)
+        self.session.delete(group)
 
-    async def add_member(
+    def add_member(
         self,
         group_id: uuid.UUID,
         admin_id: uuid.UUID,
         email: str,
         role: str = "member",
     ) -> GroupMember:
-        await self._check_admin(group_id, admin_id)
-        group = await self.get_group(group_id)
+        self._check_admin(group_id, admin_id)
+        group = self.get_group(group_id)
 
-        result = await self.session.execute(select(User).where(User.email == email))
+        result = self.session.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if not user:
             raise NotFoundError("User not found")
 
-        existing = await self.session.execute(
+        existing = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == user.id,
@@ -116,18 +116,18 @@ class GroupService:
             role=role,
         )
         self.session.add(membership)
-        await self.session.flush()
+        self.session.flush()
         return membership
 
-    async def remove_member(
+    def remove_member(
         self,
         group_id: uuid.UUID,
         admin_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> GroupMember:
-        await self._check_admin(group_id, admin_id)
+        self._check_admin(group_id, admin_id)
 
-        result = await self.session.execute(
+        result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == user_id,
@@ -139,7 +139,7 @@ class GroupService:
             raise NotFoundError("Member not found")
 
         if membership.role == "admin":
-            admin_count = await self.session.execute(
+            admin_count = self.session.execute(
                 select(func.count(GroupMember.id)).where(
                     GroupMember.group_id == group_id,
                     GroupMember.role == "admin",
@@ -150,11 +150,11 @@ class GroupService:
                 raise ConflictError("Cannot remove last admin")
 
         membership.left_at = datetime.now(timezone.utc)
-        await self.session.flush()
+        self.session.flush()
         return membership
 
-    async def get_members(self, group_id: uuid.UUID) -> list[GroupMember]:
-        result = await self.session.execute(
+    def get_members(self, group_id: uuid.UUID) -> list[GroupMember]:
+        result = self.session.execute(
             select(GroupMember)
             .where(GroupMember.group_id == group_id)
             .options(selectinload(GroupMember.user))
@@ -162,8 +162,8 @@ class GroupService:
         )
         return list(result.scalars().all())
 
-    async def get_member_timeline(self, group_id: uuid.UUID) -> dict:
-        members = await self.get_members(group_id)
+    def get_member_timeline(self, group_id: uuid.UUID) -> dict:
+        members = self.get_members(group_id)
         current = [m for m in members if m.is_active()]
         past = [m for m in members if not m.is_active()]
         return {
@@ -172,8 +172,8 @@ class GroupService:
             "past_members": past,
         }
 
-    async def _check_admin(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        result = await self.session.execute(
+    def _check_admin(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == user_id,

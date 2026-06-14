@@ -170,7 +170,7 @@ class AnomalyDetector:
 
         return None
 
-    async def detect_anomalies(
+    def detect_anomalies(
         self,
         rows: list[dict],
         existing_expenses: Optional[list[dict]] = None,
@@ -312,7 +312,7 @@ class AnomalyDetector:
             ))
         elif raw_currency.upper() != self.default_currency:
             from app.config import settings
-            if raw_currency.upper() in settings.SUPPORTED_CURRENCIES:
+            if raw_currency.upper() in settings.get_supported_currencies_list():
                 results.append(AnomalyResult(
                     row_number=row_num,
                     anomaly_type="currency_mismatch_group",

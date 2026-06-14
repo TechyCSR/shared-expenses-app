@@ -8,9 +8,14 @@ from app.extensions import init_extensions
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config.from_object(settings)
+    app.config["SQLALCHEMY_DATABASE_URI"] = settings.DATABASE_URL
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["JWT_SECRET_KEY"] = settings.JWT_SECRET_KEY
+    app.config["JWT_ALGORITHM"] = settings.JWT_ALGORITHM
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = settings.JWT_ACCESS_TOKEN_EXPIRES
+    app.config["DEBUG"] = settings.DEBUG
 
-    CORS(app, origins=settings.CORS_ORIGINS, supports_credentials=True)
+    CORS(app, origins=settings.get_cors_origins_list(), supports_credentials=True)
     init_extensions(app)
 
     from app.api import auth, groups, expenses, settlements, balances, imports, users

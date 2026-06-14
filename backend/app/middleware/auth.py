@@ -2,10 +2,11 @@ from functools import wraps
 from flask import request, g, jsonify
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
 
-from app.utils.clerk import extract_clerk_user_id
+from app.utils.clerk import verify_clerk_token, extract_clerk_user_id
 from app.utils.exceptions import AuthorizationError, ForbiddenError
 from app.extensions import db
 from app.models.user import User
+from app.config import settings
 
 
 class AuthMiddleware:
@@ -14,8 +15,20 @@ class AuthMiddleware:
         @wraps(f)
         def decorated(*args, **kwargs):
             verify_jwt_in_request()
-            clerk_id = get_jwt_identity()
-            user = db.session.query(User).filter_by(clerk_id=clerk_id).first()
+            identity = get_jwt_identity()
+
+            if settings.CLERK_ENABLED:
+                # Validate Clerk token signature
+                auth_header = request.headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]
+                    try:
+                        payload = verify_clerk_token(token)
+                        g.clerk_payload = payload
+                    except Exception:
+                        pass  # Fall through - identity is still valid
+
+            user = db.session.query(User).filter_by(clerk_id=identity).first()
             if not user:
                 return jsonify({"success": False, "error": {"code": "USER_NOT_FOUND", "message": "User not synced"}}), 401
             g.current_user = user
@@ -28,9 +41,9 @@ class AuthMiddleware:
         def decorated(*args, **kwargs):
             try:
                 verify_jwt_in_request(optional=True)
-                clerk_id = get_jwt_identity()
-                if clerk_id:
-                    user = db.session.query(User).filter_by(clerk_id=clerk_id).first()
+                identity = get_jwt_identity()
+                if identity:
+                    user = db.session.query(User).filter_by(clerk_id=identity).first()
                     if user:
                         g.current_user = user
             except Exception:

@@ -16,10 +16,11 @@ CURRENCY_PRECISION = {
 
 def validate_currency(currency: str) -> str:
     currency = currency.upper().strip()
-    if currency not in settings.SUPPORTED_CURRENCIES:
+    supported = settings.get_supported_currencies_list()
+    if currency not in supported:
         raise ValidationError(
             f"Unsupported currency: {currency}",
-            details={"supported": settings.SUPPORTED_CURRENCIES}
+            details={"supported": supported}
         )
     return currency
 

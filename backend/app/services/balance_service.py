@@ -16,15 +16,15 @@ class BalanceService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_group_balances(
+    def get_group_balances(
         self,
         group_id: uuid.UUID,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> dict:
-        expenses = await self._get_expenses_in_range(group_id, start_date, end_date)
-        settlements = await self._get_settlements_in_range(group_id, start_date, end_date)
-        memberships = await self._get_active_memberships(group_id, start_date, end_date)
+        expenses = self._get_expenses_in_range(group_id, start_date, end_date)
+        settlements = self._get_settlements_in_range(group_id, start_date, end_date)
+        memberships = self._get_active_memberships(group_id, start_date, end_date)
 
         user_balances = defaultdict(lambda: {
             "paid": Decimal("0"),
@@ -101,20 +101,20 @@ class BalanceService:
 
         return {"balances": results}
 
-    async def get_user_balance(
+    def get_user_balance(
         self,
         group_id: uuid.UUID,
         user_id: uuid.UUID,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> dict:
-        balances = await self.get_group_balances(group_id, start_date, end_date)
+        balances = self.get_group_balances(group_id, start_date, end_date)
         for b in balances["balances"]:
             if b["user_id"] == user_id:
                 return b
         raise NotFoundError("User balance not found")
 
-    async def _get_expenses_in_range(
+    def _get_expenses_in_range(
         self,
         group_id: uuid.UUID,
         start_date: Optional[date],
@@ -131,10 +131,10 @@ class BalanceService:
         if end_date:
             query = query.where(Expense.expense_date <= end_date)
         query = query.order_by(Expense.expense_date)
-        result = await self.session.execute(query)
+        result = self.session.execute(query)
         return list(result.scalars().all())
 
-    async def _get_settlements_in_range(
+    def _get_settlements_in_range(
         self,
         group_id: uuid.UUID,
         start_date: Optional[date],
@@ -146,17 +146,17 @@ class BalanceService:
         if end_date:
             query = query.where(Settlement.settlement_date <= end_date)
         query = query.order_by(Settlement.settlement_date)
-        result = await self.session.execute(query)
+        result = self.session.execute(query)
         return list(result.scalars().all())
 
-    async def _get_active_memberships(
+    def _get_active_memberships(
         self,
         group_id: uuid.UUID,
         start_date: Optional[date],
         end_date: Optional[date],
     ) -> dict:
         query = select(GroupMember).where(GroupMember.group_id == group_id)
-        result = await self.session.execute(query)
+        result = self.session.execute(query)
         memberships = result.scalars().all()
 
         membership_map = defaultdict(list)

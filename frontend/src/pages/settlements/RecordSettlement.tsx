@@ -35,22 +35,22 @@ export default function RecordSettlement() {
   })
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-6 py-4">
-          <Link to={`/groups/${groupId}`} className="text-xl font-semibold">Shared Expenses</Link>
+          <Link to={`/groups/${groupId}`} className="text-xl font-semibold text-white">Shared Expenses</Link>
         </div>
       </header>
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <Card>
-          <CardHeader><CardTitle>Record Settlement</CardTitle></CardHeader>
+        <Card className="bg-[#0a0a0a] border-gray-800">
+          <CardHeader><CardTitle className="text-white">Record Settlement</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={(e) => { e.preventDefault(); mutation.mutate() }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">From</label>
+                  <label className="block text-sm font-medium mb-1 text-gray-300">From</label>
                   <select value={fromUserId} onChange={(e) => setFromUserId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" required>
+                    className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white" required>
                     <option value="">Select user</option>
                     {members?.filter(m => m.is_active).map(m => (
                       <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
@@ -58,9 +58,9 @@ export default function RecordSettlement() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">To</label>
+                  <label className="block text-sm font-medium mb-1 text-gray-300">To</label>
                   <select value={toUserId} onChange={(e) => setToUserId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" required>
+                    className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white" required>
                     <option value="">Select user</option>
                     {members?.filter(m => m.is_active).map(m => (
                       <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
@@ -70,17 +70,17 @@ export default function RecordSettlement() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Amount</label>
+                  <label className="block text-sm font-medium mb-1 text-gray-300">Amount</label>
                   <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" required />
+                    className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white" required />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Date</label>
+                  <label className="block text-sm font-medium mb-1 text-gray-300">Date</label>
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" required />
+                    className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white" required />
                 </div>
               </div>
-              <Button type="submit" disabled={mutation.isPending}>
+              <Button type="submit" disabled={mutation.isPending} className="bg-white text-black hover:bg-gray-200">
                 {mutation.isPending ? "Recording..." : "Record Settlement"}
               </Button>
             </form>

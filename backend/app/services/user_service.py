@@ -11,14 +11,14 @@ class UserService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def sync_user(
+    def sync_user(
         self,
         clerk_id: str,
         email: str,
         full_name: Optional[str] = None,
         avatar_url: Optional[str] = None,
     ) -> tuple[User, bool]:
-        result = await self.session.execute(select(User).where(User.clerk_id == clerk_id))
+        result = self.session.execute(select(User).where(User.clerk_id == clerk_id))
         user = result.scalar_one_or_none()
 
         if user:
@@ -36,26 +36,26 @@ class UserService:
             self.session.add(user)
             is_new = True
 
-        await self.session.flush()
+        self.session.flush()
         return user, is_new
 
-    async def get_by_clerk_id(self, clerk_id: str) -> User:
-        result = await self.session.execute(select(User).where(User.clerk_id == clerk_id))
+    def get_by_clerk_id(self, clerk_id: str) -> User:
+        result = self.session.execute(select(User).where(User.clerk_id == clerk_id))
         user = result.scalar_one_or_none()
         if not user:
             raise NotFoundError("User not found")
         return user
 
-    async def get_by_id(self, user_id: uuid.UUID) -> User:
-        result = await self.session.execute(select(User).where(User.id == user_id))
+    def get_by_id(self, user_id: uuid.UUID) -> User:
+        result = self.session.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if not user:
             raise NotFoundError("User not found")
         return user
 
-    async def search_users(self, query: str, limit: int = 10) -> list[User]:
+    def search_users(self, query: str, limit: int = 10) -> list[User]:
         search_term = f"%{query}%"
-        result = await self.session.execute(
+        result = self.session.execute(
             select(User).where(
                 or_(
                     User.email.ilike(search_term),

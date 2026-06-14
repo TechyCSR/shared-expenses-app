@@ -27,22 +27,22 @@ export default function ImportUpload() {
   })
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-6 py-4">
-          <Link to={`/groups/${groupId}`} className="text-xl font-semibold">Shared Expenses</Link>
+          <Link to={`/groups/${groupId}`} className="text-xl font-semibold text-white">Shared Expenses</Link>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <Card>
+        <Card className="bg-[#0a0a0a] border-gray-800">
           <CardHeader>
-            <CardTitle>Import Expenses from CSV</CardTitle>
+            <CardTitle className="text-white">Import Expenses from CSV</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={(e) => { e.preventDefault(); mutation.mutate() }} className="space-y-4">
               <div
-                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400 transition-colors"
+                className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center cursor-pointer hover:border-gray-600 transition-colors"
                 onClick={() => fileRef.current?.click()}
               >
                 <input
@@ -54,25 +54,25 @@ export default function ImportUpload() {
                 />
                 {file ? (
                   <div>
-                    <p className="font-medium text-sm">{file.name}</p>
+                    <p className="font-medium text-sm text-white">{file.name}</p>
                     <p className="text-xs text-gray-500 mt-1">{(file.size / 1024).toFixed(1)} KB</p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-sm text-gray-500">Click to select a CSV file</p>
-                    <p className="text-xs text-gray-400 mt-1">Headers: date, description, paid_by, amount, currency, split_type, split_with, split_details</p>
+                    <p className="text-sm text-gray-400">Click to select a CSV file</p>
+                    <p className="text-xs text-gray-600 mt-1">Headers: date, description, paid_by, amount, currency, split_type, split_with, split_details</p>
                   </div>
                 )}
               </div>
 
               {mutation.isError && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-400">
                   {(mutation.error as Error).message}
                 </p>
               )}
 
               <div className="flex gap-3">
-                <Button type="submit" disabled={!file || mutation.isPending}>
+                <Button type="submit" disabled={!file || mutation.isPending} className="bg-white text-black hover:bg-gray-200">
                   {mutation.isPending ? "Uploading..." : "Upload & Parse"}
                 </Button>
                 <Link to={`/groups/${groupId}`}>

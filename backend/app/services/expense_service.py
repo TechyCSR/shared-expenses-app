@@ -17,7 +17,7 @@ class ExpenseService:
         self.session = session
         self.group_service = GroupService(session)
 
-    async def create_expense(
+    def create_expense(
         self,
         group_id: uuid.UUID,
         created_by: uuid.UUID,
@@ -30,13 +30,13 @@ class ExpenseService:
         participants: list[dict],
         notes: Optional[str] = None,
     ) -> Expense:
-        await self._validate_group_access(group_id, created_by)
-        await self._validate_payer(group_id, paid_by, expense_date)
+        self._validate_group_access(group_id, created_by)
+        self._validate_payer(group_id, paid_by, expense_date)
 
         currency = validate_currency(currency)
         amount = normalize_amount(amount, currency)
 
-        participant_data = await self._calculate_shares(
+        participant_data = self._calculate_shares(
             group_id, split_type, amount, participants, expense_date
         )
 
@@ -52,7 +52,7 @@ class ExpenseService:
             notes=notes,
         )
         self.session.add(expense)
-        await self.session.flush()
+        self.session.flush()
 
         for p in participant_data:
             participant = ExpenseParticipant(
@@ -63,11 +63,11 @@ class ExpenseService:
             )
             self.session.add(participant)
 
-        await self.session.flush()
+        self.session.flush()
         return expense
 
-    async def get_expense(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> Expense:
-        result = await self.session.execute(
+    def get_expense(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> Expense:
+        result = self.session.execute(
             select(Expense)
             .where(Expense.id == expense_id)
             .options(selectinload(Expense.participants).selectinload(ExpenseParticipant.user))
@@ -76,10 +76,10 @@ class ExpenseService:
         expense = result.scalar_one_or_none()
         if not expense:
             raise NotFoundError("Expense not found")
-        await self._validate_group_access(expense.group_id, user_id)
+        self._validate_group_access(expense.group_id, user_id)
         return expense
 
-    async def get_group_expenses(
+    def get_group_expenses(
         self,
         group_id: uuid.UUID,
         user_id: uuid.UUID,
@@ -88,7 +88,7 @@ class ExpenseService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> tuple[list[Expense], int]:
-        await self._validate_group_access(group_id, user_id)
+        self._validate_group_access(group_id, user_id)
 
         query = (
             select(Expense)
@@ -103,34 +103,34 @@ class ExpenseService:
             query = query.where(Expense.expense_date <= end_date)
 
         count_query = select(func.count()).select_from(query.subquery())
-        total = (await self.session.execute(count_query)).scalar()
+        total = (self.session.execute(count_query)).scalar()
 
         query = query.offset((page - 1) * per_page).limit(per_page)
-        result = await self.session.execute(query)
+        result = self.session.execute(query)
         expenses = list(result.scalars().all())
 
         return expenses, total
 
-    async def update_expense(
+    def update_expense(
         self,
         expense_id: uuid.UUID,
         user_id: uuid.UUID,
         **kwargs
     ) -> Expense:
-        expense = await self.get_expense(expense_id, user_id)
-        await self._validate_group_access(expense.group_id, user_id)
+        expense = self.get_expense(expense_id, user_id)
+        self._validate_group_access(expense.group_id, user_id)
 
         if "participants" in kwargs:
             participants = kwargs.pop("participants")
-            await self.session.execute(
+            self.session.execute(
                 select(ExpenseParticipant).where(ExpenseParticipant.expense_id == expense_id)
             )
-            for p in await self.session.execute(
+            for p in self.session.execute(
                 select(ExpenseParticipant).where(ExpenseParticipant.expense_id == expense_id)
             ):
-                await self.session.delete(p.scalar())
+                self.session.delete(p.scalar())
 
-            participant_data = await self._calculate_shares(
+            participant_data = self._calculate_shares(
                 expense.group_id,
                 kwargs.get("split_type", expense.split_type),
                 kwargs.get("amount", expense.amount),
@@ -153,16 +153,16 @@ class ExpenseService:
                     value = validate_currency(value)
                 setattr(expense, key, value)
 
-        await self.session.flush()
+        self.session.flush()
         return expense
 
-    async def delete_expense(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        expense = await self.get_expense(expense_id, user_id)
-        await self._validate_group_access(expense.group_id, user_id)
-        await self.session.delete(expense)
+    def delete_expense(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        expense = self.get_expense(expense_id, user_id)
+        self._validate_group_access(expense.group_id, user_id)
+        self.session.delete(expense)
 
-    async def _validate_group_access(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        result = await self.session.execute(
+    def _validate_group_access(self, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == user_id,
@@ -172,8 +172,8 @@ class ExpenseService:
         if not result.scalar_one_or_none():
             raise ForbiddenError("Not a member of this group")
 
-    async def _validate_payer(self, group_id: uuid.UUID, payer_id: uuid.UUID, expense_date: date) -> None:
-        result = await self.session.execute(
+    def _validate_payer(self, group_id: uuid.UUID, payer_id: uuid.UUID, expense_date: date) -> None:
+        result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == payer_id,
@@ -184,7 +184,7 @@ class ExpenseService:
         if not result.scalar_one_or_none():
             raise ValidationError("Payer was not a group member on expense date")
 
-    async def _calculate_shares(
+    def _calculate_shares(
         self,
         group_id: uuid.UUID,
         split_type: str,
@@ -193,7 +193,7 @@ class ExpenseService:
         expense_date: date,
     ) -> list[dict]:
         member_ids = [p["user_id"] for p in participants]
-        result = await self.session.execute(
+        result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id.in_(member_ids),

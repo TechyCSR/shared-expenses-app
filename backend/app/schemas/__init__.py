@@ -29,8 +29,9 @@ from app.schemas.settlement import (
 )
 from app.schemas.balance import (
     BalanceSummaryResponse,
-    BalanceBreakdownResponse,
+    BalanceBreakdown,
     BalanceItem,
+    GroupBalanceResponse,
 )
 from app.schemas.import_job import (
     ImportJobCreate,

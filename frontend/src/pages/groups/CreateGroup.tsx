@@ -24,45 +24,45 @@ export default function CreateGroup() {
   })
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-6 py-4">
-          <Link to="/groups" className="text-xl font-semibold">Shared Expenses</Link>
+          <Link to="/groups" className="text-xl font-semibold text-white">Shared Expenses</Link>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-8">
-        <Card>
+        <Card className="bg-[#0a0a0a] border-gray-800">
           <CardHeader>
-            <CardTitle>Create Group</CardTitle>
+            <CardTitle className="text-white">Create Group</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={(e) => { e.preventDefault(); mutation.mutate() }} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Group Name</label>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Group Name</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Description</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white"
                   rows={3}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Default Currency</label>
+                <label className="block text-sm font-medium mb-1 text-gray-300">Default Currency</label>
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white"
                 >
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
@@ -71,7 +71,7 @@ export default function CreateGroup() {
                 </select>
               </div>
               <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={mutation.isPending || !name.trim()}>
+                <Button type="submit" disabled={mutation.isPending || !name.trim()} className="bg-white text-black hover:bg-gray-200">
                   {mutation.isPending ? "Creating..." : "Create Group"}
                 </Button>
                 <Link to="/groups"><Button type="button" variant="secondary">Cancel</Button></Link>

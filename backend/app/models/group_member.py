@@ -11,7 +11,6 @@ class GroupMember(db.Model):
     __tablename__ = "group_members"
     __table_args__ = (
         UniqueConstraint("group_id", "user_id", "joined_at", name="uq_group_user_joined"),
-        Index("ix_group_members_group_active", "group_id", "left_at", postgresql_where=(left_at.is_(None))),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

@@ -8,6 +8,7 @@ class AuthSyncRequest(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    session_token: Optional[str] = None
 
     model_config = ConfigDict(extra="ignore")
 

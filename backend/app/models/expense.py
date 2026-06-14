@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, date, timezone
 from decimal import Decimal
 from sqlalchemy import (
-    String, Text, DateTime, Date, ForeignKey, Numeric, CheckConstraint, Index
+    String, Text, DateTime, Date, ForeignKey, Numeric, CheckConstraint, Index, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship

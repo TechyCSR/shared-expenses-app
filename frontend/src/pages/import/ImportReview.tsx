@@ -33,8 +33,8 @@ export default function ImportReview() {
   })
 
   const resolveMutation = useMutation({
-    mutationFn: async ({ anomalyId, decision, resolution }: { anomalyId: string; decision: string; resolution?: Record<string, unknown> }) => {
-      await api.patch(`/imports/${jobId}/anomalies/${anomalyId}`, { decision, resolution })
+    mutationFn: async ({ anomalyId, decision }: { anomalyId: string; decision: string; resolution?: Record<string, unknown> }) => {
+      await api.patch(`/imports/${jobId}/anomalies/${anomalyId}`, { decision })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["import-anomalies", jobId] })
@@ -58,8 +58,8 @@ export default function ImportReview() {
 
   if (!job || !anomalies) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Loading...</div>
       </div>
     )
   }
@@ -69,39 +69,40 @@ export default function ImportReview() {
   )
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-gray-800">
         <div className="max-w-5xl mx-auto px-6 py-4">
-          <Link to={`/groups/${groupId}`} className="text-xl font-semibold">Shared Expenses</Link>
+          <Link to={`/groups/${groupId}`} className="text-xl font-semibold text-white">Shared Expenses</Link>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-semibold">Review Import</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-2xl font-semibold text-white">Review Import</h2>
+            <p className="text-sm text-gray-400 mt-1">
               {job.filename} · {job.total_rows} rows · {anomalies.length} anomalies detected
             </p>
           </div>
           <Button
             onClick={() => commitMutation.mutate(false)}
             disabled={unresolvedErrors.length > 0 || commitMutation.isPending}
+            className="bg-white text-black hover:bg-gray-200"
           >
             {commitMutation.isPending ? "Importing..." : "Commit Import"}
           </Button>
         </div>
 
         {unresolvedErrors.length > 0 && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-700">
+          <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-md">
+            <p className="text-sm text-red-400">
               {unresolvedErrors.length} unresolved error(s) remaining. Resolve them before committing.
             </p>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => commitMutation.mutate(true)}
-              className="text-red-600 mt-1"
+              className="text-red-400 mt-1 hover:text-red-300 hover:bg-red-900/30"
             >
               Force Import Anyway
             </Button>
@@ -109,34 +110,34 @@ export default function ImportReview() {
         )}
 
         {anomalies.length === 0 ? (
-          <Card>
+          <Card className="bg-[#0a0a0a] border-gray-800">
             <CardContent className="py-8 text-center">
-              <p className="text-gray-500 text-sm">No anomalies detected. Ready to import!</p>
+              <p className="text-gray-400 text-sm">No anomalies detected. Ready to import!</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
             {anomalies.map((anomaly) => (
-              <Card key={anomaly.id} className={`py-3 px-4 ${
-                anomaly.severity === "error" ? "border-red-200" :
-                anomaly.severity === "warning" ? "border-yellow-200" : ""
+              <Card key={anomaly.id} className={`bg-[#0a0a0a] border-gray-800 ${
+                anomaly.severity === "error" ? "border-red-900" :
+                anomaly.severity === "warning" ? "border-yellow-900" : ""
               }`}>
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4 py-3 px-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                        anomaly.severity === "error" ? "bg-red-100 text-red-700" :
-                        anomaly.severity === "warning" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-blue-100 text-blue-700"
+                        anomaly.severity === "error" ? "bg-red-900/50 text-red-400" :
+                        anomaly.severity === "warning" ? "bg-yellow-900/50 text-yellow-400" :
+                        "bg-blue-900/50 text-blue-400"
                       }`}>
                         {anomaly.severity}
                       </span>
-                      <span className="text-xs text-gray-400">Row {anomaly.row_number}</span>
-                      <span className="text-xs font-medium text-gray-600">{anomaly.anomaly_type}</span>
+                      <span className="text-xs text-gray-500">Row {anomaly.row_number}</span>
+                      <span className="text-xs font-medium text-gray-300">{anomaly.anomaly_type}</span>
                     </div>
-                    <p className="text-sm">{anomaly.message}</p>
+                    <p className="text-sm text-gray-300">{anomaly.message}</p>
                     {anomaly.raw_row_data && (
-                      <div className="mt-1 text-xs text-gray-400 truncate">
+                      <div className="mt-1 text-xs text-gray-600 truncate">
                         {anomaly.raw_row_data.description} · {anomaly.raw_row_data.amount} {anomaly.raw_row_data.currency}
                       </div>
                     )}
@@ -144,12 +145,12 @@ export default function ImportReview() {
                   <div className="flex items-center gap-2 shrink-0">
                     {!decisions[anomaly.id]?.decision ? (
                       <>
-                        <Button size="sm" variant="ghost" onClick={() => setDecision(anomaly.id, "approve")}>Approve</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setDecision(anomaly.id, "reject")}>Reject</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDecision(anomaly.id, "approve")} className="text-green-400 hover:text-green-300">Approve</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDecision(anomaly.id, "reject")} className="text-red-400 hover:text-red-300">Reject</Button>
                       </>
                     ) : (
                       <span className={`text-xs font-medium ${
-                        decisions[anomaly.id]?.decision === "approve" ? "text-green-600" : "text-red-600"
+                        decisions[anomaly.id]?.decision === "approve" ? "text-green-400" : "text-red-400"
                       }`}>
                         {decisions[anomaly.id]?.decision === "approve" ? "Approved" : "Rejected"}
                       </span>

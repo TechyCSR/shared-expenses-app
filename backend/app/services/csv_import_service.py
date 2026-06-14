@@ -25,7 +25,7 @@ class CSVImportService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def parse_and_validate(
+    def parse_and_validate(
         self,
         csv_content: str,
         group_id: uuid.UUID,
@@ -35,12 +35,12 @@ class CSVImportService:
         if not rows:
             raise ValidationError("CSV file is empty or invalid")
 
-        group = await self.session.get(Group, group_id)
+        group = self.session.get(Group, group_id)
         if not group:
             raise NotFoundError("Group not found")
 
-        members = await self._get_group_members(group_id)
-        existing_expenses = await self._get_existing_expenses(group_id)
+        members = self._get_group_members(group_id)
+        existing_expenses = self._get_existing_expenses(group_id)
 
         job = ImportJob(
             group_id=group_id,
@@ -51,10 +51,10 @@ class CSVImportService:
             total_rows=len(rows),
         )
         self.session.add(job)
-        await self.session.flush()
+        self.session.flush()
 
         detector = AnomalyDetector(members, group.default_currency)
-        anomalies = await detector.detect_anomalies(rows, existing_expenses)
+        anomalies = detector.detect_anomalies(rows, existing_expenses)
 
         for anomaly in anomalies:
             self.session.add(ImportAnomaly(
@@ -69,16 +69,16 @@ class CSVImportService:
 
         has_errors = any(a.severity == "error" for a in anomalies)
         job.status = "reviewing" if has_errors else "ready"
-        await self.session.flush()
+        self.session.flush()
         return job
 
-    async def resolve_anomaly(
+    def resolve_anomaly(
         self,
         anomaly_id: uuid.UUID,
         decision: str,
         resolution: Optional[dict] = None,
     ) -> ImportAnomaly:
-        result = await self.session.execute(
+        result = self.session.execute(
             select(ImportAnomaly).where(ImportAnomaly.id == anomaly_id)
         )
         anomaly = result.scalar_one_or_none()
@@ -88,12 +88,12 @@ class CSVImportService:
         anomaly.user_decision = decision
         anomaly.user_resolution = resolution
         anomaly.resolved_at = datetime.utcnow()
-        await self.session.flush()
+        self.session.flush()
 
         return anomaly
 
-    async def commit_import(self, job_id: uuid.UUID, force: bool = False) -> ImportJob:
-        result = await self.session.execute(
+    def commit_import(self, job_id: uuid.UUID, force: bool = False) -> ImportJob:
+        result = self.session.execute(
             select(ImportJob).where(ImportJob.id == job_id)
         )
         job = result.scalar_one_or_none()
@@ -103,7 +103,7 @@ class CSVImportService:
         if job.status not in ("ready", "reviewing"):
             raise ValidationError(f"Cannot commit import in status '{job.status}'")
 
-        anomalies_result = await self.session.execute(
+        anomalies_result = self.session.execute(
             select(ImportAnomaly).where(
                 ImportAnomaly.import_job_id == job_id,
                 ImportAnomaly.severity == "error",
@@ -118,7 +118,7 @@ class CSVImportService:
             )
 
         rows = self._parse_csv(job.original_csv)
-        members = await self._get_group_members(job.group_id)
+        members = self._get_group_members(job.group_id)
         member_map = {m.get("full_name", "").lower(): m for m in members}
         for m in members:
             email_lower = m.get("email", "").lower()
@@ -130,7 +130,7 @@ class CSVImportService:
 
         imported = 0
         rejected = 0
-        error_anomalies = await self.session.execute(
+        error_anomalies = self.session.execute(
             select(ImportAnomaly).where(
                 ImportAnomaly.import_job_id == job_id,
                 ImportAnomaly.user_decision == "reject",
@@ -201,7 +201,7 @@ class CSVImportService:
                     created_by=job.uploaded_by,
                 )
                 self.session.add(expense)
-                await self.session.flush()
+                self.session.flush()
 
                 if split_type == "equal":
                     share_amount = (abs(amount) / len(participants)).quantize(Decimal("0.01"))
@@ -213,7 +213,7 @@ class CSVImportService:
                         ))
                     remainder = abs(amount) - (share_amount * len(participants))
                     if remainder > 0:
-                        expense_participants_result = await self.session.execute(
+                        expense_participants_result = self.session.execute(
                             select(ExpenseParticipant).where(
                                 ExpenseParticipant.expense_id == expense.id
                             ).limit(1)
@@ -277,17 +277,17 @@ class CSVImportService:
                 "imported_rows": imported,
                 "rejected_rows": rejected,
                 "modified_rows": 0,
-                "detected_anomalies": await self._count_anomalies(job.id),
-                "actions_taken": await self._summarize_actions(job.id),
+                "detected_anomalies": self._count_anomalies(job.id),
+                "actions_taken": self._summarize_actions(job.id),
                 "generated_at": datetime.utcnow().isoformat(),
             },
         )
         self.session.add(report)
-        await self.session.flush()
+        self.session.flush()
         return job
 
-    async def get_report(self, job_id: uuid.UUID) -> ImportReport:
-        result = await self.session.execute(
+    def get_report(self, job_id: uuid.UUID) -> ImportReport:
+        result = self.session.execute(
             select(ImportReport).where(ImportReport.import_job_id == job_id)
         )
         report = result.scalar_one_or_none()
@@ -310,8 +310,8 @@ class CSVImportService:
             rows.append(cleaned)
         return rows
 
-    async def _get_group_members(self, group_id: uuid.UUID) -> list[dict]:
-        result = await self.session.execute(
+    def _get_group_members(self, group_id: uuid.UUID) -> list[dict]:
+        result = self.session.execute(
             select(GroupMember, User)
             .join(User, GroupMember.user_id == User.id)
             .where(
@@ -329,8 +329,8 @@ class CSVImportService:
             })
         return members
 
-    async def _get_existing_expenses(self, group_id: uuid.UUID) -> list[dict]:
-        result = await self.session.execute(
+    def _get_existing_expenses(self, group_id: uuid.UUID) -> list[dict]:
+        result = self.session.execute(
             select(Expense).where(Expense.group_id == group_id)
         )
         expenses = []
@@ -345,8 +345,8 @@ class CSVImportService:
             })
         return expenses
 
-    async def _count_anomalies(self, job_id: uuid.UUID) -> dict:
-        result = await self.session.execute(
+    def _count_anomalies(self, job_id: uuid.UUID) -> dict:
+        result = self.session.execute(
             select(ImportAnomaly).where(ImportAnomaly.import_job_id == job_id)
         )
         anomalies = result.scalars().all()
@@ -355,8 +355,8 @@ class CSVImportService:
             counts[a.anomaly_type] = counts.get(a.anomaly_type, 0) + 1
         return counts
 
-    async def _summarize_actions(self, job_id: uuid.UUID) -> dict:
-        result = await self.session.execute(
+    def _summarize_actions(self, job_id: uuid.UUID) -> dict:
+        result = self.session.execute(
             select(ImportAnomaly).where(ImportAnomaly.import_job_id == job_id)
         )
         anomalies = result.scalars().all()

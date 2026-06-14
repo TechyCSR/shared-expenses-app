@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from typing import Optional, List, Literal
+from typing import Optional, List
+from typing_extensions import Literal
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
 
-class SplitType(str, Literal["equal", "unequal", "percentage", "shares"]):
-    pass
+SplitType = Literal["equal", "unequal", "percentage", "shares"]
 
 
 class ExpenseParticipantCreate(BaseModel):

@@ -5,10 +5,12 @@ import api from "@/services/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import type { Group, GroupMember, Expense } from "@/types"
+import { useClerk, useUser } from "@clerk/clerk-react"
 
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const { user } = useUser()
+  const { signOut } = useClerk()
   const [tab, setTab] = useState<"expenses" | "members" | "balances">("expenses")
 
   const { data: group } = useQuery({
@@ -40,8 +42,8 @@ export default function GroupDetail() {
 
   if (!group) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Loading...</div>
       </div>
     )
   }
@@ -53,31 +55,50 @@ export default function GroupDetail() {
   ]
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-gray-800">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link to="/" className="text-xl font-semibold">Shared Expenses</Link>
-            <span className="text-gray-300">/</span>
-            <h1 className="text-lg font-medium">{group.name}</h1>
+            <Link to="/" className="text-xl font-semibold text-white">Shared Expenses</Link>
+            <span className="text-gray-600">/</span>
+            <h1 className="text-lg font-medium text-white">{group.name}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Link to={`/groups/${id}/expenses/new`}><Button size="sm">Add Expense</Button></Link>
-            <Link to={`/groups/${id}/import`}><Button variant="secondary" size="sm">Import CSV</Button></Link>
+          <div className="flex items-center gap-3">
+            {user && (
+              <img
+                src={user.imageUrl}
+                alt={user.fullName || "User"}
+                className="w-8 h-8 rounded-full"
+              />
+            )}
+            <Link to={`/groups/${id}/expenses/new`}>
+              <Button size="sm" className="bg-white text-black hover:bg-gray-200">Add Expense</Button>
+            </Link>
+            <Link to={`/groups/${id}/import`}>
+              <Button variant="secondary" size="sm">Import CSV</Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              onClick={() => signOut()}
+            >
+              Sign Out
+            </Button>
           </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-6">
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <div className="flex gap-1 mb-6 border-b border-gray-800">
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key
-                  ? "border-black text-black"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "border-white text-white"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
               }`}
             >
               {t.label}
@@ -88,13 +109,13 @@ export default function GroupDetail() {
         {tab === "expenses" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium">Expenses</h2>
+              <h2 className="text-lg font-medium text-white">Expenses</h2>
               <Link to={`/groups/${id}/settlements/new`}>
-                <Button variant="ghost" size="sm">Record Settlement</Button>
+                <Button variant="ghost" size="sm" className="text-gray-300">Record Settlement</Button>
               </Link>
             </div>
             {(!expensesData?.expenses || expensesData.expenses.length === 0) ? (
-              <Card>
+              <Card className="bg-[#0a0a0a] border-gray-800">
                 <CardContent className="py-8 text-center">
                   <p className="text-gray-500 text-sm">No expenses yet</p>
                 </CardContent>
@@ -103,15 +124,15 @@ export default function GroupDetail() {
               <div className="space-y-2">
                 {expensesData.expenses.map((expense: Expense) => (
                   <Link key={expense.id} to={`/groups/${id}/expenses/${expense.id}`}>
-                    <Card className="hover:border-gray-400 transition-colors cursor-pointer py-3 px-4">
+                    <Card className="bg-[#0a0a0a] border-gray-800 hover:border-gray-700 transition-colors cursor-pointer py-3 px-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-medium text-sm">{expense.description}</p>
+                          <p className="font-medium text-sm text-white">{expense.description}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
                             {expense.expense_date} · {expense.payer_name || expense.paid_by.slice(0, 8)}
                           </p>
                         </div>
-                        <p className="font-medium text-sm">{expense.amount} {expense.currency}</p>
+                        <p className="font-medium text-sm text-white">{expense.amount} {expense.currency}</p>
                       </div>
                     </Card>
                   </Link>
@@ -123,16 +144,16 @@ export default function GroupDetail() {
 
         {tab === "members" && (
           <div>
-            <h2 className="text-lg font-medium mb-4">Members</h2>
+            <h2 className="text-lg font-medium text-white mb-4">Members</h2>
             <div className="space-y-2">
               {members?.filter(m => m.is_active).map((member) => (
-                <Card key={member.id} className="py-3 px-4">
+                <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-sm">{member.full_name || member.email}</p>
+                      <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
                       <p className="text-xs text-gray-500">{member.email} · {member.role}</p>
                     </div>
-                    <span className="text-xs text-green-600">Active</span>
+                    <span className="text-xs text-green-400">Active</span>
                   </div>
                 </Card>
               ))}
@@ -142,7 +163,7 @@ export default function GroupDetail() {
 
         {tab === "balances" && (
           <div>
-            <h2 className="text-lg font-medium mb-4">Balances</h2>
+            <h2 className="text-lg font-medium text-white mb-4">Balances</h2>
             <Link to={`/groups/${id}/balances`}>
               <Button variant="secondary" size="sm">View Detailed Balances</Button>
             </Link>
