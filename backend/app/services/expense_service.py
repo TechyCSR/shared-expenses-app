@@ -173,12 +173,15 @@ class ExpenseService:
             raise ForbiddenError("Not a member of this group")
 
     def _validate_payer(self, group_id: uuid.UUID, payer_id: uuid.UUID, expense_date: date) -> None:
+        # Convert expense_date to datetime at start of day for comparison
+        from datetime import datetime, time
+        expense_datetime = datetime.combine(expense_date, time.min)
         result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == payer_id,
-                GroupMember.joined_at <= expense_date,
-                GroupMember.left_at.is_(None) | (GroupMember.left_at > expense_date)
+                GroupMember.joined_at <= expense_datetime,
+                GroupMember.left_at.is_(None) | (GroupMember.left_at > expense_datetime)
             )
         )
         if not result.scalar_one_or_none():
@@ -193,12 +196,15 @@ class ExpenseService:
         expense_date: date,
     ) -> list[dict]:
         member_ids = [p["user_id"] for p in participants]
+        # Convert expense_date to datetime at start of day for comparison
+        from datetime import datetime, time
+        expense_datetime = datetime.combine(expense_date, time.min)
         result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id.in_(member_ids),
-                GroupMember.joined_at <= expense_date,
-                GroupMember.left_at.is_(None) | (GroupMember.left_at > expense_date)
+                GroupMember.joined_at <= expense_datetime,
+                GroupMember.left_at.is_(None) | (GroupMember.left_at > expense_datetime)
             )
         )
         valid_members = {m.user_id for m in result.scalars().all()}
