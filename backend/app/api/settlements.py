@@ -12,14 +12,14 @@ bp = Blueprint("settlements", __name__)
 
 @bp.route("/groups/<uuid:group_id>/settlements", methods=["GET"])
 @jwt_required()
-async def list_settlements(group_id):
+def list_settlements(group_id):
     clerk_id = get_jwt_identity()
-    user = await UserService(db.session).get_by_clerk_id(clerk_id)
+    user = UserService(db.session).get_by_clerk_id(clerk_id)
 
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
 
-    settlements, total = await SettlementService(db.session).get_group_settlements(
+    settlements, total = SettlementService(db.session).get_group_settlements(
         group_id, user.id, page, per_page
     )
 
@@ -43,14 +43,14 @@ async def list_settlements(group_id):
         "total": total,
         "page": page,
         "per_page": per_page,
-    }))
+    }).model_dump())
 
 
 @bp.route("/groups/<uuid:group_id>/settlements", methods=["POST"])
 @jwt_required()
-async def create_settlement(group_id):
+def create_settlement(group_id):
     clerk_id = get_jwt_identity()
-    user = await UserService(db.session).get_by_clerk_id(clerk_id)
+    user = UserService(db.session).get_by_clerk_id(clerk_id)
 
     try:
         data = request.get_json()
@@ -58,7 +58,7 @@ async def create_settlement(group_id):
     except PydanticValidationError as e:
         return create_error_response("VALIDATION_ERROR", "Invalid request", e.errors(), 400)
 
-    settlement = await SettlementService(db.session).create_settlement(
+    settlement = SettlementService(db.session).create_settlement(
         group_id=group_id,
         created_by=user.id,
         from_user_id=schema.from_user_id,
@@ -68,7 +68,7 @@ async def create_settlement(group_id):
         settlement_date=schema.settlement_date,
         notes=schema.notes,
     )
-    await db.session.commit()
+    db.session.commit()
 
     return jsonify(create_success_response({
         "id": str(settlement.id),
@@ -81,16 +81,16 @@ async def create_settlement(group_id):
         "notes": settlement.notes,
         "created_by": str(settlement.created_by),
         "created_at": settlement.created_at.isoformat(),
-    })), 201
+    }).model_dump()), 201
 
 
 @bp.route("/groups/<uuid:group_id>/settlements/<uuid:settlement_id>", methods=["DELETE"])
 @jwt_required()
-async def delete_settlement(group_id, settlement_id):
+def delete_settlement(group_id, settlement_id):
     clerk_id = get_jwt_identity()
-    user = await UserService(db.session).get_by_clerk_id(clerk_id)
+    user = UserService(db.session).get_by_clerk_id(clerk_id)
 
-    await SettlementService(db.session).delete_settlement(settlement_id, user.id)
-    await db.session.commit()
+    SettlementService(db.session).delete_settlement(settlement_id, user.id)
+    db.session.commit()
 
-    return jsonify(create_success_response({"message": "Settlement deleted"}))
+    return jsonify(create_success_response({"message": "Settlement deleted"}).model_dump())

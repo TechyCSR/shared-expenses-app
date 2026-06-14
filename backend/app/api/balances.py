@@ -12,9 +12,9 @@ bp = Blueprint("balances", __name__)
 
 @bp.route("/groups/<uuid:group_id>/balances", methods=["GET"])
 @jwt_required()
-async def get_group_balances(group_id):
+def get_group_balances(group_id):
     clerk_id = get_jwt_identity()
-    user = await UserService(db.session).get_by_clerk_id(clerk_id)
+    user = UserService(db.session).get_by_clerk_id(clerk_id)
 
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -24,18 +24,18 @@ async def get_group_balances(group_id):
     if end_date:
         end_date = date.fromisoformat(end_date)
 
-    balances = await BalanceService(db.session).get_group_balances(
+    balances = BalanceService(db.session).get_group_balances(
         group_id, start_date, end_date
     )
 
-    return jsonify(create_success_response(balances))
+    return jsonify(create_success_response(balances).model_dump())
 
 
 @bp.route("/groups/<uuid:group_id>/balances/<uuid:user_id>", methods=["GET"])
 @jwt_required()
-async def get_user_balance(group_id, user_id):
+def get_user_balance(group_id, user_id):
     clerk_id = get_jwt_identity()
-    user = await UserService(db.session).get_by_clerk_id(clerk_id)
+    user = UserService(db.session).get_by_clerk_id(clerk_id)
 
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -45,8 +45,8 @@ async def get_user_balance(group_id, user_id):
     if end_date:
         end_date = date.fromisoformat(end_date)
 
-    balance = await BalanceService(db.session).get_user_balance(
+    balance = BalanceService(db.session).get_user_balance(
         group_id, user_id, start_date, end_date
     )
 
-    return jsonify(create_success_response(balance))
+    return jsonify(create_success_response(balance).model_dump())

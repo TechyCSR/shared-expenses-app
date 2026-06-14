@@ -9,12 +9,12 @@ bp = Blueprint("users", __name__)
 
 @bp.route("/search", methods=["GET"])
 @jwt_required()
-async def search_users():
+def search_users():
     query = request.args.get("q", "").strip()
     if not query or len(query) < 2:
-        return jsonify(create_success_response({"users": [], "total": 0}))
+        return jsonify(create_success_response({"users": [], "total": 0}).model_dump())
 
-    users = await UserService(db.session).search_users(query)
+    users = UserService(db.session).search_users(query)
 
     return jsonify(create_success_response({
         "users": [{
@@ -24,4 +24,4 @@ async def search_users():
             "avatar_url": u.avatar_url,
         } for u in users],
         "total": len(users),
-    }))
+    }).model_dump())
