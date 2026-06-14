@@ -17,7 +17,7 @@ export default function GroupDetail() {
   const [addEmail, setAddEmail] = useState("")
   const [addRole, setAddRole] = useState("member")
   const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<Array<{id: string; clerk_id: string; email: string; full_name: string | null; avatar_url: string | null}>>([])
   const [searching, setSearching] = useState(false)
 
   const { data: group } = useQuery({
@@ -78,10 +78,15 @@ export default function GroupDetail() {
     setSearching(true)
     try {
       const res = await api.get(`/users/search?q=${encodeURIComponent(query)}`)
-      const users = res.data.data.users || []
-      // Filter out existing members
-      const existingIds = members?.filter(m => m.is_active).map(m => m.user_id) || []
-      setSearchResults(users.filter((u: any) => !existingIds.includes(u.id)))
+      const users: Array<{id: string; clerk_id: string; email: string; full_name: string | null; avatar_url: string | null}> = res.data.data.users || []
+      // Filter out existing members (compare by internal id and clerk_id)
+      const existingInternalIds = members?.filter(m => m.is_active).map(m => m.user_id) || []
+      const existingClerkIds = members?.filter(m => m.is_active).map(m => m.clerk_id).filter(Boolean) || []
+      const filtered = users.filter(u => 
+        !existingInternalIds.includes(u.id) && 
+        !existingClerkIds.includes(u.clerk_id)
+      )
+      setSearchResults(filtered)
     } catch (err) {
       console.error("Search failed:", err)
       setSearchResults([])
@@ -229,10 +234,10 @@ export default function GroupDetail() {
                   
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs text-gray-400 mb-1 block">Search by email</label>
+                      <label className="text-xs text-gray-400 mb-1 block">Search by email or name</label>
                       <input
                         type="text"
-                        placeholder="Search users by email..."
+                        placeholder="Search by email or name..."
                         className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-gray-500"
                         value={searchQuery}
                         onChange={(e) => {

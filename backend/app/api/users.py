@@ -19,6 +19,7 @@ def search_users():
     return jsonify(create_success_response({
         "users": [{
             "id": str(u.id),
+            "clerk_id": u.clerk_id,
             "email": u.email,
             "full_name": u.full_name,
             "avatar_url": u.avatar_url,
