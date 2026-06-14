@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import Loading from "@/components/ui/Loading"
 import type { Group, GroupMember, Expense } from "@/types"
+import { formatAmount } from "@/utils/format"
 import { useUser } from "@clerk/clerk-react"
 
 export default function GroupDetail() {
@@ -146,7 +147,7 @@ export default function GroupDetail() {
                             {expense.expense_date} · {expense.payer_name || expense.paid_by.slice(0, 8)}
                           </p>
                         </div>
-                        <p className="font-medium text-sm text-white">{expense.amount} {expense.currency}</p>
+                        <p className="font-medium text-sm text-white">{formatAmount(expense.amount)} {expense.currency}</p>
                       </div>
                     </Card>
                   </Link>

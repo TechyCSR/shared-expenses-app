@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import Loading from "@/components/ui/Loading"
 import type { Expense } from "@/types"
+import { formatAmount } from "@/utils/format"
 
 export default function ExpensesList() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -46,7 +47,7 @@ export default function ExpensesList() {
                       <p className="font-medium text-sm text-white">{expense.description}</p>
                       <p className="text-xs text-gray-500">{expense.expense_date} · {expense.payer_name || "Unknown"}</p>
                     </div>
-                    <p className="font-medium text-sm text-white">{expense.amount} {expense.currency}</p>
+                    <p className="font-medium text-sm text-white">{formatAmount(expense.amount)} {expense.currency}</p>
                   </div>
                 </Card>
               </Link>

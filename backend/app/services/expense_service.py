@@ -173,9 +173,11 @@ class ExpenseService:
             raise ForbiddenError("Not a member of this group")
 
     def _validate_payer(self, group_id: uuid.UUID, payer_id: uuid.UUID, expense_date: date) -> None:
-        # Convert expense_date to datetime at start of day for comparison
-        from datetime import datetime, time
-        expense_datetime = datetime.combine(expense_date, time.min)
+        # Convert expense_date to datetime at end of day for comparison
+        # Use timezone-aware datetime to match the timezone-aware joined_at/left_at columns
+        # We use 23:59:59 to allow members who join anytime during the expense date
+        from datetime import datetime, time, timezone
+        expense_datetime = datetime.combine(expense_date, time.max, tzinfo=timezone.utc)
         result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
@@ -196,9 +198,11 @@ class ExpenseService:
         expense_date: date,
     ) -> list[dict]:
         member_ids = [p["user_id"] for p in participants]
-        # Convert expense_date to datetime at start of day for comparison
-        from datetime import datetime, time
-        expense_datetime = datetime.combine(expense_date, time.min)
+        # Convert expense_date to datetime at end of day for comparison
+        # Use timezone-aware datetime to match the timezone-aware joined_at/left_at columns
+        # We use 23:59:59 to allow members who join anytime during the expense date
+        from datetime import datetime, time, timezone
+        expense_datetime = datetime.combine(expense_date, time.max, tzinfo=timezone.utc)
         result = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
