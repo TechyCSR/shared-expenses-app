@@ -10,7 +10,7 @@ export default function HomePage() {
     if (isSignedIn) {
       navigate("/dashboard")
     } else {
-      navigate("/login")
+      navigate("/signup")
     }
   }
 
@@ -203,7 +203,7 @@ export default function HomePage() {
             Join teams who trust SharedExpenses for clear, transparent expense management.
           </p>
           <Button size="lg" className="bg-white text-black hover:bg-gray-200 h-12 px-8" onClick={handleGetStarted}>
-            Continue with Google
+            Create Free Account
           </Button>
         </div>
       </section>

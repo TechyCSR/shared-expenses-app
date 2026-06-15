@@ -18,6 +18,7 @@ import ImportReview from "./pages/import/ImportReview"
 import ImportReportPage from "./pages/import/ImportReportPage"
 import Settings from "./pages/Settings"
 import Login from "./pages/Login"
+import SignUpPage from "./pages/SignUp"
 import api from "@/services/api"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -108,6 +109,7 @@ export default function App() {
         {/* Public routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUpPage />} />
 
         {/* Protected routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
