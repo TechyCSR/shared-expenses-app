@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: shared-expenses-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 main:app"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+        description: "PostgreSQL connection string (Neon recommended). Required."
+      - key: JWT_SECRET_KEY
+        generateValue: true
+        description: "Secret key for JWT signing - auto-generated secure value"
+      - key: CORS_ORIGINS
+        sync: false
+        description: "Comma-separated allowed CORS origins (your Vercel frontend URL). Required."
+      - key: CLERK_ENABLED
+        value: "true"
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+        description: "Clerk publishable key from dashboard. Required."
+      - key: CLERK_SECRET_KEY
+        sync: false
+        description: "Clerk secret key from dashboard. Required."
+      - key: CLERK_JWKS_URL
+        value: "https://api.clerk.com/v1/jwks"
+      - key: CLERK_ISSUER
+        sync: false
+        description: "Your Clerk issuer URL (e.g., https://your-app.clerk.accounts.dev). Required."
+      - key: DEFAULT_CURRENCY
+        value: "INR"
+      - key: SUPPORTED_CURRENCIES
+        value: "INR,USD,EUR,GBP,JPY"
+      - key: MAX_CSV_SIZE_MB
+        value: "5"
+      - key: MAX_CSV_ROWS
+        value: "1000"
