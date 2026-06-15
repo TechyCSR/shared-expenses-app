@@ -40,13 +40,15 @@ export default function GroupDetail() {
     enabled: !!id,
   })
 
-  const { data: expensesData, isLoading: expensesLoading } = useQuery({
+  const { data: expensesData, isLoading: expensesLoading, isPlaceholderData } = useQuery({
     queryKey: ["expenses", id],
     queryFn: async () => {
       const res = await api.get(`/groups/${id}/expenses`)
       return res.data.data
     },
     enabled: !!id,
+    placeholderData: (prev) => prev,
+    staleTime: 10_000,
   })
 
   const addMemberMutation = useMutation({
@@ -182,8 +184,8 @@ export default function GroupDetail() {
 
         {/* Tab Content */}
         {tab === "expenses" && (
-          <div>
-            {expensesLoading ? (
+          <div className={`transition-opacity duration-150 ${isPlaceholderData ? "opacity-50" : "opacity-100"}`}>
+            {expensesLoading && !expensesData ? (
               <Loading message="Loading expenses..." />
             ) : !expensesData?.expenses || expensesData.expenses.length === 0 ? (
               <Card className="bg-[#0a0a0a] border-gray-800">

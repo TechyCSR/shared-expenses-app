@@ -92,6 +92,19 @@ def list_anomalies(job_id):
     } for a in anomalies]).model_dump())
 
 
+@bp.route("/imports/<uuid:job_id>/summary", methods=["GET"])
+@jwt_required()
+def get_import_summary(job_id):
+    """Single endpoint that returns job + anomalies + policy in one call (faster than multiple calls)."""
+    try:
+        summary = CSVImportService(db.session).get_summary(job_id)
+        return jsonify(create_success_response(summary).model_dump())
+    except Exception as e:
+        if "not found" in str(e).lower():
+            return create_error_response("NOT_FOUND", str(e), {}, 404)
+        raise
+
+
 @bp.route("/imports/<uuid:job_id>/anomalies/<uuid:anomaly_id>", methods=["PATCH"])
 @jwt_required()
 def resolve_anomaly(job_id, anomaly_id):
