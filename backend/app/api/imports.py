@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from pydantic import ValidationError as PydanticValidationError
 from app.extensions import db
@@ -149,4 +149,45 @@ def get_import_report(job_id):
         "import_job_id": str(report.import_job_id),
         "report_data": report.report_data,
         "generated_at": report.generated_at.isoformat(),
+    }).model_dump())
+
+
+@bp.route("/imports/<uuid:job_id>/report/download", methods=["GET"])
+@jwt_required()
+def download_import_report(job_id):
+    """Download a human-readable Markdown import report."""
+    job = db.session.execute(
+        select(ImportJob).where(ImportJob.id == job_id)
+    ).scalar_one_or_none()
+    if not job:
+        return create_error_response("NOT_FOUND", "Import job not found", {}, 404)
+
+    markdown = CSVImportService(db.session).get_report_markdown(job_id)
+    filename = f"import_report_{job.filename.rsplit('.', 1)[0]}.md"
+    return Response(
+        markdown,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@bp.route("/imports/<uuid:job_id>/approve-all", methods=["POST"])
+@jwt_required()
+def approve_all_anomalies(job_id):
+    """Approve or reject all unresolved anomalies for a job in one go."""
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        data = {}
+
+    decision = (data.get("decision") or "approve").lower()
+    if decision not in ("approve", "reject"):
+        return create_error_response("VALIDATION_ERROR", "decision must be 'approve' or 'reject'", {}, 400)
+
+    count = CSVImportService(db.session).approve_all_anomalies(job_id, decision=decision)
+    db.session.commit()
+
+    return jsonify(create_success_response({
+        "updated": count,
+        "decision": decision,
     }).model_dump())

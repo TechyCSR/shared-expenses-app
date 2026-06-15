@@ -430,7 +430,7 @@ class AnomalyDetector:
                     suggested_action={
                         "type": "confirm_mapping",
                         "raw_value": raw_payer,
-                        "mapped_to": user.get("id"),
+                        "mapped_to": str(user.get("id")) if user.get("id") else None,
                         "mapped_name": matched_name,
                     },
                     raw_row_data=row,
@@ -502,7 +502,7 @@ class AnomalyDetector:
                         suggested_action={
                             "type": "confirm_mapping",
                             "raw_value": name,
-                            "mapped_to": user.get("id"),
+                            "mapped_to": str(user.get("id")) if user.get("id") else None,
                             "mapped_name": matched_name,
                         },
                         raw_row_data=row,
@@ -650,7 +650,7 @@ class AnomalyDetector:
                         suggested_action={
                             "type": "duplicate_action",
                             "options": ["keep_both", "merge", "ignore_duplicate"],
-                            "existing_expense_id": existing.get("id"),
+                            "existing_expense_id": str(existing.get("id")) if existing.get("id") else None,
                         },
                         raw_row_data=row,
                     ))
