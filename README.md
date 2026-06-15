@@ -116,7 +116,6 @@ shared-expenses-app/
 ├── SCOPE.md                 # Anomaly log + data model reference
 ├── DECISIONS.md             # Engineering decision log
 ├── AI_USAGE.md              # AI-assisted development notes
-└── DEPLOYMENT.md            # Step-by-step deployment guide
 ```
 
 ## Local Development
@@ -175,8 +174,6 @@ See `backend/.env.example` for the full list. Key vars:
 
 ## Deployment
 
-See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for a full walkthrough.
-
 **TL;DR**:
 - **Backend** → [Render](https://render.com), using `backend/render.yaml`
 - **Frontend** → [Vercel](https://vercel.com), using `frontend/vercel.json`
@@ -188,4 +185,3 @@ See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for a full walkthrough.
 - [`SCOPE.md`](./SCOPE.md) - anomaly log, handling policy, data model, schema
 - [`DECISIONS.md`](./DECISIONS.md) - engineering decisions with rationale
 - [`AI_USAGE.md`](./AI_USAGE.md) - AI-assisted development notes with worked examples
-- [`DEPLOYMENT.md`](./DEPLOYMENT.md) - deployment walkthrough
