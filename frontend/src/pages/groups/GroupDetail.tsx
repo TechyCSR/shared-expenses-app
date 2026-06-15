@@ -7,14 +7,20 @@ import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import Loading from "@/components/ui/Loading"
 import type { Group, GroupMember, Expense } from "@/types"
-import { formatAmount } from "@/utils/format"
 import { useUser } from "@clerk/clerk-react"
+import { formatAmount } from "@/utils/format"
 
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>()
   const { user } = useUser()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<"expenses" | "members" | "balances">("expenses")
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<Array<{id: string; clerk_id: string; email: string; full_name: string | null}>>([])
+  const [searching, setSearching] = useState(false)
+  const [addEmail, setAddEmail] = useState("")
+  const [addRole, setAddRole] = useState("member")
 
   const { data: group, isLoading: groupLoading } = useQuery({
     queryKey: ["group", id],
@@ -43,6 +49,54 @@ export default function GroupDetail() {
     enabled: !!id,
   })
 
+  const addMemberMutation = useMutation({
+    mutationFn: async ({ email, role }: { email: string; role: string }) => {
+      const res = await api.post(`/groups/${id}/members`, { email, role })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["group-members", id] })
+      setShowAddMember(false)
+      setAddEmail("")
+      setSearchResults([])
+      setSearchQuery("")
+    },
+    onError: (err: any) => {
+      console.error("Failed to add member:", err)
+      alert(err?.response?.data?.error?.message || "Failed to add member")
+    },
+  })
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await api.delete(`/groups/${id}/members/${userId}`)
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["group-members", id] })
+    },
+  })
+
+  const searchUsers = async (query: string) => {
+    if (!query || query.length < 2) {
+      setSearchResults([])
+      return
+    }
+    setSearching(true)
+    try {
+      const res = await api.get(`/users/search?q=${encodeURIComponent(query)}`)
+      const users: Array<{id: string; clerk_id: string; email: string; full_name: string | null}> = res.data.data.users || []
+      const existingClerkIds = members?.filter(m => m.is_active).map(m => m.clerk_id).filter(Boolean) || []
+      const filtered = users.filter(u => !existingClerkIds.includes(u.clerk_id))
+      setSearchResults(filtered)
+    } catch (err) {
+      console.error("Search failed:", err)
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
+
   if (groupLoading || membersLoading) {
     return <Layout><Loading message="Loading group..." /></Layout>
   }
@@ -64,6 +118,8 @@ export default function GroupDetail() {
   ]
 
   const activeMembers = members?.filter(m => m.is_active) || []
+  const pastMembers = members?.filter(m => !m.is_active) || []
+  const isAdmin = members?.some(m => m.clerk_id === user?.id && m.role === "admin" && m.is_active)
 
   return (
     <Layout>
@@ -166,20 +222,158 @@ export default function GroupDetail() {
 
         {tab === "members" && (
           <div>
-            <h3 className="text-sm font-medium text-gray-400 mb-3">Active Members ({activeMembers.length})</h3>
+            {/* Members Header with Add Member button */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-300">Active Members ({activeMembers.length})</h3>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowAddMember(!showAddMember)}
+                >
+                  {showAddMember ? "Cancel" : "+ Add Member"}
+                </Button>
+              )}
+            </div>
+
+            {/* Add Member Form (only for admins) */}
+            {showAddMember && isAdmin && (
+              <Card className="bg-[#0a0a0a] border-2 border-gray-600 mb-4">
+                <CardContent className="py-4 space-y-3">
+                  <h4 className="text-sm font-medium text-white">Add New Member</h4>
+                  
+                  {/* Search */}
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Search by email or name</label>
+                    <input
+                      type="text"
+                      placeholder="Search by email or name..."
+                      className="w-full px-3 py-2 border-2 border-gray-600 rounded text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-white placeholder-gray-500"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        searchUsers(e.target.value)
+                      }}
+                    />
+                  </div>
+
+                  {/* Search Results */}
+                  {searchResults.length > 0 && (
+                    <div className="border-2 border-gray-700 rounded divide-y divide-gray-700">
+                      {searchResults.map((u) => (
+                        <div key={u.id} className="p-2 flex items-center justify-between hover:bg-gray-900/50">
+                          <div>
+                            <p className="text-sm text-white">{u.full_name || "Unknown"}</p>
+                            <p className="text-xs text-gray-500">{u.email}</p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => addMemberMutation.mutate({ email: u.email, role: addRole })}
+                            disabled={addMemberMutation.isPending}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {searching && <p className="text-xs text-gray-500">Searching...</p>}
+                  {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
+                    <p className="text-xs text-gray-500">No users found</p>
+                  )}
+
+                  {/* Direct Email Entry */}
+                  <div className="pt-2 border-t border-gray-700">
+                    <label className="block text-xs text-gray-400 mb-1">Or enter email directly</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        placeholder="user@example.com"
+                        className="flex-1 px-3 py-2 border-2 border-gray-600 rounded text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-white placeholder-gray-500"
+                        value={addEmail}
+                        onChange={(e) => setAddEmail(e.target.value)}
+                      />
+                      <select
+                        value={addRole}
+                        onChange={(e) => setAddRole(e.target.value)}
+                        className="px-2 py-2 border-2 border-gray-600 rounded text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-white"
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <Button
+                        size="sm"
+                        onClick={() => addMemberMutation.mutate({ email: addEmail, role: addRole })}
+                        disabled={!addEmail || addMemberMutation.isPending}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+
+                  {addMemberMutation.isError && (
+                    <p className="text-xs text-red-400">Failed to add member. User may not exist.</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Members List */}
             <div className="space-y-2">
               {activeMembers.map((member) => (
                 <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
-                      <p className="text-xs text-gray-500">{member.email} · <span className="capitalize">{member.role}</span></p>
+                      <p className="text-xs text-gray-500">
+                        {member.email} · <span className="capitalize">{member.role}</span>
+                      </p>
                     </div>
-                    <span className="text-xs text-green-400">Active</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-green-400">Active</span>
+                      {isAdmin && member.clerk_id !== user?.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                          onClick={() => {
+                            if (confirm(`Remove ${member.full_name || member.email}?`)) {
+                              removeMemberMutation.mutate(member.user_id)
+                            }
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </Card>
               ))}
             </div>
+
+            {/* Past Members */}
+            {pastMembers.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-400 mb-3">Past Members ({pastMembers.length})</h3>
+                <div className="space-y-2">
+                  {pastMembers.map((member) => (
+                    <Card key={member.id} className="bg-[#0a0a0a] border-gray-800 py-3 px-4 opacity-60">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm text-white">{member.full_name || member.email}</p>
+                          <p className="text-xs text-gray-500">
+                            Left {new Date(member.left_at!).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <span className="text-xs text-gray-500">Removed</span>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
