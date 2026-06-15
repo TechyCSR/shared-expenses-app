@@ -65,7 +65,7 @@ export default function RecordSettlement() {
                   <label className="block text-sm font-medium mb-1.5 text-gray-400">From (Who paid)</label>
                   <select
                     value={fromUserId}
-                    onChange={(e) => setFromUserId(e.target.value)}
+                    onChange={(e) => { setFromUserId(e.target.value); setToUserId(""); }}
                     className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white"
                     required
                   >
@@ -84,9 +84,11 @@ export default function RecordSettlement() {
                     required
                   >
                     <option value="">Select user</option>
-                    {activeMembers.map(m => (
-                      <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
-                    ))}
+                    {activeMembers
+                      .filter(m => m.user_id !== fromUserId)
+                      .map(m => (
+                        <option key={m.user_id} value={m.user_id}>{m.full_name || m.email}</option>
+                      ))}
                   </select>
                 </div>
               </div>

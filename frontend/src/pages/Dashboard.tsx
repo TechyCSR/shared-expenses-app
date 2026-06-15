@@ -6,10 +6,15 @@ import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import Loading from "@/components/ui/Loading"
 import type { Group } from "@/types"
-import { useUser } from "@clerk/clerk-react"
+import { useAuth, useUser } from "@clerk/clerk-react"
 
 export default function Dashboard() {
+  const { isSignedIn: isAuthSignedIn, isLoaded: isAuthLoaded } = useAuth()
   const { isSignedIn, isLoaded } = useUser()
+  
+  // Use useAuth for immediate auth state, useUser for user data
+  const isSignedInCombined = isAuthSignedIn && isSignedIn
+  const isLoadedCombined = isAuthLoaded && isLoaded
 
   const { data: groups, isPlaceholderData, isLoading, isError } = useQuery({
     queryKey: ["groups"],
@@ -17,18 +22,18 @@ export default function Dashboard() {
       const res = await api.get("/groups")
       return res.data.data as Group[]
     },
-    enabled: isSignedIn,
+    enabled: isSignedInCombined,
     // Show previous data immediately when refetching (e.g., after import)
     placeholderData: (prev) => prev,
     retry: false,
     staleTime: 10_000,
   })
 
-  if (!isLoaded) {
+  if (!isLoadedCombined) {
     return <Layout><Loading message="Loading..." /></Layout>
   }
 
-  if (!isSignedIn) {
+  if (!isSignedInCombined) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <Card className="w-full max-w-md bg-[#0a0a0a] border border-gray-800">

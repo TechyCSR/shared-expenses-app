@@ -140,6 +140,9 @@ export default function GroupDetail() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to={`/groups/${id}/expenses/new`}>
+              <Button size="sm" className="bg-white text-black hover:bg-gray-200">+ Add Expense</Button>
+            </Link>
             <Link to={`/groups/${id}/settings`}>
               <Button variant="secondary" size="sm">
                 <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -149,20 +152,13 @@ export default function GroupDetail() {
                 Settings
               </Button>
             </Link>
+            <Link to={`/groups/${id}/import`}>
+              <Button variant="secondary" size="sm">Import CSV</Button>
+            </Link>
+            <Link to={`/groups/${id}/settlements/new`}>
+              <Button variant="secondary" size="sm">Record Settlement</Button>
+            </Link>
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link to={`/groups/${id}/expenses/new`}>
-            <Button size="sm" className="bg-white text-black hover:bg-gray-200">+ Add Expense</Button>
-          </Link>
-          <Link to={`/groups/${id}/import`}>
-            <Button variant="secondary" size="sm">Import CSV</Button>
-          </Link>
-          <Link to={`/groups/${id}/settlements/new`}>
-            <Button variant="ghost" size="sm" className="text-gray-300">Record Settlement</Button>
-          </Link>
         </div>
 
         {/* Tabs */}

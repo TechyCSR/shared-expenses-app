@@ -1,13 +1,18 @@
 import { Link, useNavigate } from "react-router-dom"
-import { useAuth } from "@clerk/clerk-react"
+import { useAuth, useUser } from "@clerk/clerk-react"
 import { Button } from "@/components/ui/Button"
 
 export default function HomePage() {
-  const { isSignedIn, isLoaded } = useAuth()
+  const { isSignedIn: isAuthSignedIn, isLoaded: isAuthLoaded } = useAuth()
+  const { isSignedIn, isLoaded } = useUser()
+  
+  // Use combined auth state to prevent flicker
+  const isSignedInCombined = isAuthSignedIn && isSignedIn
+  const isLoadedCombined = isAuthLoaded && isLoaded
   const navigate = useNavigate()
 
   const handleGetStarted = () => {
-    if (isSignedIn) {
+    if (isSignedInCombined) {
       navigate("/dashboard")
     } else {
       navigate("/signup")
@@ -15,7 +20,7 @@ export default function HomePage() {
   }
 
   const handleSignIn = () => {
-    if (isSignedIn) {
+    if (isSignedInCombined) {
       navigate("/dashboard")
     } else {
       navigate("/login")
@@ -34,7 +39,7 @@ export default function HomePage() {
             <span className="text-white font-semibold text-lg">SharedExpenses</span>
           </div>
           <div className="flex items-center gap-4">
-            {isLoaded && isSignedIn ? (
+            {isLoadedCombined && isSignedInCombined ? (
               <Link to="/dashboard">
                 <Button variant="secondary" size="sm">Open App</Button>
               </Link>
