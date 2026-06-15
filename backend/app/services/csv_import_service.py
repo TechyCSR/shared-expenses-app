@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -9,11 +10,92 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ImportJob, ImportAnomaly, ImportReport, Group, GroupMember, Expense, ExpenseParticipant, User
+from app.models import ImportJob, ImportAnomaly, ImportReport, Group, GroupMember, Expense, ExpenseParticipant, User, Settlement
 from app.services.anomaly_service import AnomalyDetector
 from app.utils.dates import parse_flexible_date
 from app.utils.currency import normalize_amount
 from app.utils.exceptions import ValidationError, NotFoundError
+
+
+def fuzzy_match_name(name: str, member_map: dict) -> Optional[dict]:
+    """Match a name to a group member using fuzzy matching.
+    Handles: case differences, extra context (Dev's friend Kabir), whitespace.
+    """
+    if not name:
+        return None
+    
+    name = name.strip()
+    name_lower = name.lower()
+    
+    # Step 1: Direct match
+    if name_lower in member_map:
+        return member_map[name_lower]
+    
+    # Step 2: Extract name from contextual phrases like "Dev's friend Kabir"
+    context_patterns = [
+        r"friend[s]?\s+(\w+)",      # "friend Kabir" -> Kabir
+        r"(\w+)\s+'?s\s+friend",    # "Dev's friend" -> extract the other name
+        r"with\s+(\w+)",            # "with Kabir"
+        r"and\s+(\w+)",             # "and Kabir"
+    ]
+    
+    for pattern in context_patterns:
+        match = re.search(pattern, name_lower)
+        if match:
+            extracted = match.group(1).strip()
+            extracted_clean = re.sub(r"[^a-z0-9]", "", extracted)
+            if extracted_clean in member_map:
+                return member_map[extracted_clean]
+    
+    # Step 3: Split by delimiters and try each part
+    parts = re.split(r"[;,_\-\(\)]+\s*|\s+friend\s+", name_lower)
+    for part in parts:
+        part = part.strip()
+        if not part or len(part) < 2:
+            continue
+        part = re.sub(r"'s$", "", part)  # Remove possessive
+        clean = re.sub(r"[^a-z0-9\s]", "", part)
+        if clean in member_map:
+            return member_map[clean]
+        # Try tokens within the part
+        tokens = clean.split()
+        for token in tokens:
+            if len(token) >= 3 and token in member_map:
+                return member_map[token]
+    
+    # Step 4: Partial prefix match for single-word names
+    tokens = name_lower.split()
+    if len(tokens) == 1 and len(tokens[0]) >= 3:
+        for key in member_map:
+            if key.startswith(tokens[0]) and " " not in key:
+                return member_map[key]
+    
+    return None
+
+
+def normalize_percentages(pct_str: str, participants: list) -> list:
+    """Normalize percentages to sum to 100%.
+    If sum != 100, scale proportionally.
+    """
+    if not pct_str:
+        return []
+    
+    pct_matches = re.findall(r"(\d+(?:\.\d+)?)\s*%", pct_str)
+    if not pct_matches:
+        return []
+    
+    values = [Decimal(p) for p in pct_matches]
+    total = sum(values)
+    
+    if total == 100:
+        return values
+    
+    if total == 0:
+        return values
+    
+    # Scale proportionally to 100
+    scaled = [(v * 100 / total).quantize(Decimal("0.01")) for v in values]
+    return scaled
 
 
 EXPECTED_HEADERS = [
@@ -246,18 +328,28 @@ class CSVImportService:
 
         rows = self._parse_csv(job.original_csv)
         members = self._get_group_members(job.group_id)
-        member_map = {m.get("full_name", "").lower(): m for m in members}
+        
+        # Build member_map with multiple keys for each member
+        member_map = {}
         for m in members:
-            email_lower = m.get("email", "").lower()
-            if email_lower:
-                member_map[email_lower] = m
-            first = (m.get("full_name", "") or "").split()[0].lower()
+            full_name = m.get("full_name", "") or ""
+            email = m.get("email", "") or ""
+            
+            # Exact full name (with spaces)
+            if full_name:
+                member_map[full_name.lower()] = m
+            # Email
+            if email:
+                member_map[email.lower()] = m
+            # First name
+            first = full_name.split()[0].lower() if full_name else ""
             if first:
                 member_map[first] = m
 
         imported = 0
         rejected = 0
         expenses_to_add = []  # Bulk-add buffer for expenses
+        settlements_to_add = []  # Bulk-add buffer for settlements
         pending_participants = []  # Bulk-add buffer for participants
         rejected_anomalies = self.session.execute(
             select(ImportAnomaly).where(
@@ -326,11 +418,12 @@ class CSVImportService:
                     })
                     continue
 
-                payer = member_map.get(payer_name)
+                payer = fuzzy_match_name(payer_name, member_map)
                 if not payer:
-                    for k, v in member_map.items():
-                        if payer_name and (payer_name in k or any(payer_name.startswith(tok) for tok in k.split())):
-                            payer = v
+                    # Try case-insensitive full name match
+                    for name_key, m in member_map.items():
+                        if payer_name == name_key or payer_name in name_key:
+                            payer = m
                             break
                 if not payer:
                     rejected += 1
@@ -351,13 +444,7 @@ class CSVImportService:
 
                 participants = []
                 for pname in participant_names:
-                    pname_lower = pname.lower().strip()
-                    pmember = member_map.get(pname_lower)
-                    if not pmember:
-                        for k, v in member_map.items():
-                            if pname_lower in k or any(pname_lower.startswith(tok) for tok in k.split()):
-                                pmember = v
-                                break
+                    pmember = fuzzy_match_name(pname, member_map)
                     if pmember:
                         # Deduplicate by user id
                         if not any(p["id"] == pmember["id"] for p in participants):
@@ -371,6 +458,40 @@ class CSVImportService:
                         "description": row.get("description", ""),
                     })
                     continue
+
+                # Check if this should be converted to a settlement
+                description_lower = description.lower()
+                is_settlement = (
+                    split_type == "" or  # Empty split_type often means settlement
+                    "paid back" in description_lower or
+                    "settlement" in description_lower or
+                    "deposit" in description_lower and "share" in description_lower or
+                    "reimbursed" in description_lower
+                )
+                is_refund = amount < 0
+                
+                if is_settlement or is_refund:
+                    # Handle as settlement: find the participant who receives the payment
+                    # For settlement, split_with should be just one person (the receiver)
+                    if len(participants) == 1:
+                        # Single receiver - this is a settlement from payer to receiver
+                        from app.models import Settlement
+                        settlements_to_add.append(Settlement(
+                            group_id=job.group_id,
+                            from_user_id=payer["id"],
+                            to_user_id=participants[0]["id"],
+                            amount=abs(amount),
+                            currency=currency,
+                            settlement_date=expense_date,
+                            description=description,
+                            notes=row.get("notes", "").strip() or None,
+                            created_by=job.uploaded_by,
+                        ))
+                        imported += 1
+                        continue
+                    else:
+                        # Multiple participants - treat as expense with equal split
+                        pass  # Fall through to expense creation
 
                 # Defer flush until end of batch for speed
                 expenses_to_add.append(Expense(
@@ -404,6 +525,9 @@ class CSVImportService:
         # Bulk add all expenses in one go
         for exp in expenses_to_add:
             self.session.add(exp)
+        # Bulk add all settlements
+        for settlement in settlements_to_add:
+            self.session.add(settlement)
         # Single flush to get all IDs at once
         self.session.flush()
 
