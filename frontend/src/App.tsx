@@ -88,11 +88,11 @@ function AuthSync() {
     syncUser()
   }, [isLoaded, isSignedIn, user, getToken])
 
-  // Redirect to dashboard if signed in and on login page
+  // Redirect to dashboard if signed in and on public auth pages
   useEffect(() => {
     if (isLoaded && isSignedIn) {
       const currentPath = window.location.pathname
-      if (currentPath === "/login") {
+      if (currentPath === "/login" || currentPath === "/signup") {
         navigate("/dashboard", { replace: true })
       }
     }

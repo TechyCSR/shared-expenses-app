@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import { useUser } from "@clerk/clerk-react"
+import { Link } from "react-router-dom"
 
 export default function Settings() {
   const { signOut } = useClerk()
@@ -11,7 +12,14 @@ export default function Settings() {
   return (
     <Layout>
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <h1 className="text-2xl font-semibold text-white mb-6">Settings</h1>
+        <div className="flex items-center gap-4 mb-6">
+          <Link to="/dashboard" className="text-gray-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <h1 className="text-2xl font-semibold text-white">Settings</h1>
+        </div>
 
         <Card className="bg-[#0a0a0a] border-gray-800 mb-6">
           <CardContent className="p-6">

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth, useUser } from "@clerk/clerk-react"
+import { useEffect } from "react"
 import { Button } from "@/components/ui/Button"
 
 export default function HomePage() {
@@ -10,6 +11,13 @@ export default function HomePage() {
   const isSignedInCombined = isAuthSignedIn && isSignedIn
   const isLoadedCombined = isAuthLoaded && isLoaded
   const navigate = useNavigate()
+
+  // Redirect signed-in users to dashboard
+  useEffect(() => {
+    if (isLoadedCombined && isSignedInCombined) {
+      navigate("/dashboard", { replace: true })
+    }
+  }, [isLoadedCombined, isSignedInCombined, navigate])
 
   const handleGetStarted = () => {
     if (isSignedInCombined) {

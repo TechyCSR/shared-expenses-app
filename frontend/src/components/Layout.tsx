@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { useUser } from "@clerk/clerk-react"
+import { useUser, UserButton } from "@clerk/clerk-react"
 import { Button } from "@/components/ui/Button"
 
 interface LayoutProps {
@@ -8,7 +8,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, showNav = true }: LayoutProps) {
-  const { user, isSignedIn } = useUser()
+  const { isSignedIn } = useUser()
   const location = useLocation()
 
   // Don't show nav on home page
@@ -28,18 +28,6 @@ export default function Layout({ children, showNav = true }: LayoutProps) {
           </Link>
           
           <div className="flex items-center gap-4">
-            {user && (
-              <div className="flex items-center gap-3">
-                <img
-                  src={user.imageUrl}
-                  alt={user.fullName || "User"}
-                  className="w-8 h-8 rounded-full border border-gray-700"
-                />
-                <span className="text-sm text-gray-300 hidden sm:block">
-                  {user.fullName}
-                </span>
-              </div>
-            )}
             <Link to="/settings">
               <Button variant="secondary" size="sm" className="border-gray-600 hover:bg-gray-800">
                 <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,6 +37,20 @@ export default function Layout({ children, showNav = true }: LayoutProps) {
                 Settings
               </Button>
             </Link>
+            <UserButton 
+              afterSignOutUrl="/"
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8 rounded-full border border-gray-700",
+                  userButtonPopoverCard: "bg-[#0a0a0a] border border-gray-800",
+                  userPreviewMainIdentifier: "text-white",
+                  userPreviewSecondaryIdentifier: "text-gray-400",
+                  userButtonPopoverActionButton: "text-gray-300 hover:text-white hover:bg-gray-800",
+                  userButtonPopoverActionButtonText: "text-gray-300",
+                  userButtonPopoverFooter: "hidden",
+                }
+              }}
+            />
           </div>
         </div>
       </header>
