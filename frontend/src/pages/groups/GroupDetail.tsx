@@ -572,6 +572,44 @@ export default function GroupDetail() {
                             </button>
                             {isExpanded && (
                               <div className="border-t border-gray-800 p-4 space-y-3">
+                                {/* Per-user debt breakdown (who owes whom) */}
+                                {balancesData && balancesData.debts && balancesData.debts.length > 0 && (
+                                  <div>
+                                    <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">
+                                      {balanceNum >= 0 ? 'Owed by' : 'Needs to pay'}
+                                    </h4>
+                                    <div className="space-y-1.5">
+                                      {balancesData.debts
+                                        .filter(d => balanceNum >= 0 ? d.to_user_id === balance.user_id : d.from_user_id === balance.user_id)
+                                        .map((d, i) => (
+                                          <div key={i} className="flex justify-between text-sm px-2 py-1.5">
+                                            <div className="flex items-center gap-2">
+                                              {balanceNum >= 0 ? (
+                                                <>
+                                                  <span className="text-gray-300">{d.from_name}</span>
+                                                  <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                                  </svg>
+                                                  <span className="text-green-400 text-xs">owes you</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="text-gray-400 text-xs">owes</span>
+                                                  <span className="text-gray-300">{d.to_name}</span>
+                                                </>
+                                              )}
+                                            </div>
+                                            <span className="text-white font-medium">{formatAmount(String(d.amount))} {d.currency}</span>
+                                          </div>
+                                        ))}
+                                      {balancesData.debts.filter(d => balanceNum >= 0 ? d.to_user_id === balance.user_id : d.from_user_id === balance.user_id).length === 0 && (
+                                        <p className="text-xs text-gray-500 italic px-2 py-1">
+                                          {balanceNum >= 0 ? 'Nothing owed to this user' : 'No outstanding payments'}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 {balance.breakdown.expenses_paid?.length > 0 && (
                                   <div>
                                     <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">Paid for group</h4>

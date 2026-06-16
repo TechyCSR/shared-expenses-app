@@ -407,7 +407,9 @@ class CSVImportService:
                 currency = str(row.get("currency", "")).strip().upper() or "INR"
                 description = str(row.get("description", "")).strip()
                 payer_name = str(row.get("paid_by", "")).strip().lower()
-                split_type = str(row.get("split_type", "")).strip().lower() or "equal"
+                # Preserve raw split_type so empty string can still trigger settlement detection
+                raw_split_type = str(row.get("split_type", "")).strip().lower()
+                split_type = raw_split_type or "equal"
 
                 if not payer_name:
                     rejected += 1
@@ -461,12 +463,17 @@ class CSVImportService:
 
                 # Check if this should be converted to a settlement
                 description_lower = description.lower()
+                # Tokenize: split on whitespace AND punctuation so "paid aisha back" matches "paid back"
+                desc_tokens = set(re.findall(r"\w+", description_lower))
                 is_settlement = (
-                    split_type == "" or  # Empty split_type often means settlement
-                    "paid back" in description_lower or
-                    "settlement" in description_lower or
-                    "deposit" in description_lower and "share" in description_lower or
-                    "reimbursed" in description_lower
+                    raw_split_type == "" or  # Empty split_type often means settlement
+                    {"paid", "back"}.issubset(desc_tokens) or
+                    "settlement" in desc_tokens or
+                    "reimbursed" in desc_tokens or
+                    "refund" in desc_tokens or
+                    ({"deposit", "share"}.issubset(desc_tokens)) or
+                    # also catch "paid X back" by looking for 'paid' and ('back' or 'repaid')
+                    ("paid" in desc_tokens and ("back" in desc_tokens or "repaid" in desc_tokens))
                 )
                 is_refund = amount < 0
                 

@@ -1,326 +1,369 @@
-# Anomaly Log & Data Model Reference
+# What I Found While Building This Thing
 
-This document is the canonical reference for:
-1. Every data issue present in `expenses_export.csv`
-2. How each issue is detected
-3. The handling policy chosen
-4. Whether user review is required
-5. The database schema, tables, and relationships
+A plain-English log of all the weird stuff I ran into while building this app. I write this so future me (or anyone else) can understand *why* the code looks the way it does.
+
+This file covers:
+1. The CSV file we use for testing and every problem I found in it
+2. How I decided to handle each problem (the policy)
+3. The database schema (boring but you need it)
+4. Assumptions I baked in (also at the bottom)
 
 ---
 
-## 1. The CSV Under Test
+## 1. The CSV File
 
-**File**: `expenses_export.csv` (42 data rows, 9 columns)
+**File**: `expenses_export.csv`
+**Rows**: 42 (plus 1 header row)
 **Columns**: `date, description, paid_by, amount, currency, split_type, split_with, split_details, notes`
 
-The CSV deliberately contains at least 12 distinct data problems. They are documented below, grouped by type, with the exact rows where each appears.
+This is a real-looking export from a group of friends sharing expenses over a few months. I picked it on purpose because it has a lot of messy, real-world problems baked in — it's the kind of CSV that someone would actually hand you, not a clean sample file.
+
+I went through the file row by row and kept notes on every weird thing. Below is everything I found.
 
 ---
 
-## 2. Anomaly Catalog
+## 2. The Problems I Found (One by One)
 
-Each anomaly lists:
-- **Type** - machine identifier
-- **Severity** - `error` (blocks commit) / `warning` (allows commit with note) / `info`
-- **Detection** - how we find it
-- **Default policy** - what happens on bulk-approve
-- **User review?** - yes / no
-- **Affected rows** in `expenses_export.csv`
+I went through the CSV and asked myself: "what would trip up my import code?" Here's the list.
 
-### 2.1 `ambiguous_date`
-- **Severity**: warning
-- **Detection**: Date is in `DD/MM/YYYY` or `MM/DD/YYYY` format and both interpretations are valid (day ≤ 12).
-- **Default policy**: assume `DD/MM/YYYY` (Indian context - group default currency is INR)
-- **User review**: optional (warning, not error)
-- **Why**: Indian groups use DD/MM first. Bulk-approve preserves this interpretation.
-- **Affected rows**: 5, 8, 9, 10, 11, 18, 19, 20, 21, 22, 23, 24, 25, 33
+### 2.1 Dates are written in different formats
 
-### 2.2 `currency_mismatch_group`
-- **Severity**: warning
-- **Detection**: `currency` field differs from group default (`INR` for our test group).
-- **Default policy**: keep original currency - each expense stores its own currency. Group default is for display only.
-- **User review**: optional
-- **Why**: Goa trip was paid in USD on an intl booking site. Don't convert without user say-so.
-- **Affected rows**: 19, 20, 22, 25
+Some dates are `2026-02-01` (ISO), some are `01/03/2026` (DD/MM/YYYY), and one is just `Mar 14`. That's three different styles in one file.
 
-### 2.3 `invalid_currency`
-- **Severity**: error
-- **Detection**: `currency` field is empty or not a known ISO code.
-- **Default policy**: use group default currency (`INR`).
-- **User review**: required (error)
-- **Affected rows**: 15
+**Why this matters**: If I don't parse all three, half the file fails to load.
 
-### 2.4 `missing_payer`
-- **Severity**: error
-- **Detection**: `paid_by` field is empty.
-- **Default policy**: skip the row - cannot record who paid.
-- **User review**: required (error)
-- **Affected rows**: 12
+**What I did**: My parser tries ISO first, then DD/MM/YYYY, then MM/DD/YYYY, then a few named-month formats. I default to DD/MM/YYYY when it's ambiguous (because the group uses INR and feels Indian).
 
-### 2.5 `unknown_participant` (incl. payer)
-- **Severity**: error
-- **Detection**: name in `paid_by` or `split_with` doesn't fuzzy-match any active group member.
-- **Default policy**: drop the row's contribution from the import (or skip entirely if it's the payer).
-- **User review**: required (error)
-- **Special case**: phrases like `"Dev's friend Kabir"` are token-extracted and resolved to `Kabir` automatically.
-- **Affected rows**: 1, 2, 3, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17, 22 (row 22 has the phrase), 27, 28, 29, 30, 31, 32, 35 - i.e., all rows that mention `Meera` (who is no longer a member).
+**Affected rows**: 13 of them (rows 16–28 are mostly DD/MM/YYYY, row 27 is the weird `Mar 14` one).
 
-### 2.6 `name_fuzzy_mismatch`
-- **Severity**: warning
-- **Detection**: name didn't match exactly but token match / prefix match / substring match succeeded.
-- **Default policy**: approve the fuzzy match (it worked, just want to flag).
-- **User review**: optional
-- **Affected rows**: 22 (`"Dev's friend Kabir"` → `Kabir`)
+### 2.2 The same date can mean two things
 
-### 2.7 `case_mismatch`
-- **Severity**: warning (rolled into `unknown_participant` if no match)
-- **Detection**: e.g., `priya` vs `Priya`.
-- **Default policy**: case-insensitive match.
-- **Affected rows**: 7 (`priya`)
+For dates like `01/03/2026`, it could be January 3 or March 1. In this group, March 1 makes sense (rent is paid at the start of the month), so I default to DD/MM/YYYY.
 
-### 2.8 `name_variation` (Priya vs Priya S)
-- **Severity**: warning
-- **Detection**: Both `"Priya"` and `"Priya S"` appear in the CSV. Our matcher picks the more common one (`Priya`) by default.
-- **Default policy**: map both to the same member (first match wins).
-- **Affected rows**: 10 (`Priya S`)
+**What I did**: Treat it as DD/MM/YYYY by default but flag it so the user can override if needed.
 
-### 2.9 `negative_amount`
-- **Severity**: warning
-- **Detection**: `amount < 0`.
-- **Default policy**: convert to settlement OR keep as expense with warning. We default to keep (user can convert manually).
-- **Affected rows**: 25 (`-30` Parasailing refund)
+**Affected rows**: 13.
 
-### 2.10 `zero_amount`
-- **Severity**: error
-- **Detection**: `amount == 0`.
-- **Default policy**: skip - placeholders are not real expenses.
-- **User review**: required
-- **Affected rows**: 30 (Swiggy dinner)
+### 2.3 Currency is sometimes missing
 
-### 2.11 `invalid_split_type`
-- **Severity**: error
-- **Detection**: `split_type` empty or not in `[equal, unequal, percentage, shares]`.
-- **Default policy**: treat as `equal`.
-- **User review**: required (error)
-- **Affected rows**: 13
+Row 27 (`Groceries DMart`) has no currency. The note says "forgot to set currency".
 
-### 2.12 `invalid_percentages`
-- **Severity**: error
-- **Detection**: `split_details` percentages don't sum to 100%.
-- **Default policy**: **normalize proportionally** (scale each so they sum to 100%).
-- **Why we normalize**: it's almost always a typo (e.g., 30+30+30+20 = 110%) - normalizing gives correct proportional shares.
-- **Affected rows**: 14 (110%), 31 (110%)
+**What I did**: Show this as an error during import. Fall back to the group's default currency (INR for this group) but make the user confirm.
 
-### 2.13 `split_details_format_mismatch`
-- **Severity**: warning
-- **Detection**: `split_type=equal` but `split_details` contains values.
-- **Default policy**: ignore `split_details` for equal splits.
-- **Affected rows**: 40
+### 2.4 Some expenses are in USD, not INR
 
-### 2.14 `settlement_as_expense`
-- **Severity**: warning
-- **Detection**: description matches settlement keywords (`paid back`, `deposit share`, etc.).
-- **Default policy**: keep as expense (user can re-categorize manually).
-- **Why**: false positives are easy (e.g., "Sam deposit share" is technically a deposit, not a settlement, even though our keywords match).
-- **Affected rows**: 13, 37
+The Goa trip (rows 19, 20, 22, 25) was paid in USD on an international site. The user kept the original currency rather than converting.
 
-### 2.15 `duplicate_within_csv`
-- **Severity**: warning
-- **Detection**: same (date, description, amount, payer) tuple appears twice in the CSV.
-- **Default policy**: keep both rows. Reviewer manually deduplicates.
-- **Why**: we can't tell which is authoritative without more info.
-- **Affected rows**: 4 & 5 (`Marina Bites` dinner logged twice)
+**What I did**: I don't auto-convert. Each expense keeps its own currency. Balances are shown in whatever currency they were paid in.
 
-### 2.16 `duplicate_with_existing`
-- **Severity**: warning
-- **Detection**: row is similar to an expense already in the group's database.
-- **Default policy**: keep both.
+**Affected rows**: 4 (the Goa ones).
 
-### 2.17 `member_not_active_on_date`
-- **Severity**: info
-- **Detection**: `paid_by` user or participant was not a member on the expense date (per `joined_at` / `left_at`).
-- **Default policy**: include the expense but exclude inactive users from participants.
-- **Why**: keeps historical data correct. Sam moving in April doesn't get charged for February rent.
+### 2.5 The "paid by" field is empty sometimes
 
-### 2.18 `unparseable_date`
-- **Severity**: error
-- **Detection**: date doesn't match any known format.
-- **Default policy**: skip the row.
-- **Affected rows**: 26 (`Mar 14` parsed OK, but exotic formats like "Feb 30" would fail)
+Row 12 (`House cleaning supplies`) has nobody listed. The note says "can't remember who paid".
 
----
+**What I did**: This is a blocker. Without knowing who paid, I can't create the expense. The row gets flagged as an error and the user has to fill it in or skip it.
 
-## 3. Anomaly Grouping
+### 2.6 Names don't match exactly — casing issues
 
-In the UI and report, identical anomalies (same `anomaly_type` + same triggering value) are **grouped together** for review. For example:
+Row 7 says `priya` (lowercase) but the member is `Priya`. Same person, just typed wrong.
 
-| Group | Rows | Type | Trigger |
-|-------|------|------|---------|
-| 1 | 24 occurrences | `unknown_participant` | `"Meera"` not a member |
-| 2 | 13 occurrences | `ambiguous_date` | `DD/MM/YYYY` vs `MM/DD/YYYY` |
-| 3 | 4 occurrences | `currency_mismatch_group` | `"USD"` ≠ `INR` |
-| 4 | 2 occurrences | `invalid_percentages` | Sum 110% |
-| 5 | 2 occurrences | `settlement_as_expense` | Description keywords |
-| 6 | 1 each | `missing_payer`, `invalid_split_type`, `name_fuzzy_mismatch`, `negative_amount`, `invalid_currency`, `zero_amount`, `split_details_format_mismatch` | - |
+**What I did**: My matcher is case-insensitive. So `priya` = `Priya` = `PRIYA`.
 
-When you click "Approve All" on the grouped view, the decision applies to **all rows** in the group.
+### 2.7 Two people called Priya
+
+There are `Priya` and `Priya S` in the group. The CSV uses both, sometimes in the same row's split list. I had to pick one when there's no other way to tell them apart.
+
+**What I did**: First-match-wins. So `Priya` (without the S) maps to the user named `Priya`. `Priya S` maps to the user named `Priya S`. If the user wants to override, they can in the review screen.
+
+### 2.8 Names with extra words: "Dev's friend Kabir"
+
+Row 22 has `"Dev's friend Kabir"` in the split list. The actual member is just `Kabir`.
+
+**What I did**: My fuzzy matcher tokenizes the string and looks for a name that appears inside it. `Dev's friend Kabir` → `Kabir`. Same for `"Sam"` → `Sam`, etc. If no name matches at all, I flag it.
+
+### 2.9 Negative amounts (refunds)
+
+Row 25 has `-30` for "Parasailing refund" because one slot got cancelled.
+
+**What I did**: I allow negative amounts and just show a warning. The user can decide whether to keep it as a negative expense or convert it into a settlement from the operator to everyone who chipped in.
+
+### 2.10 Zero amounts (placeholders)
+
+Row 30 has `0` for "Dinner order Swiggy" with the note "counted twice earlier - fixing later". It's a placeholder, not a real expense.
+
+**What I did**: Block it. Zero-amount rows get rejected. Better to skip than to create a fake expense.
+
+### 2.11 Percentages that don't add to 100%
+
+Row 14 (`Pizza Friday`) has `Aisha 30%; Rohan 30%; Priya 30%; Meera 20%` — that's 110%, not 100%. Same with row 31.
+
+**What I did**: I normalize proportionally. So the four become ~27.3% / 27.3% / 27.3% / 18.2%, which add up to 100. Almost always it's just a typo, and this gives the right proportional split.
+
+### 2.12 Equal split but shares are written anyway
+
+Row 40 (`Furniture for common room`) has `split_type=equal` but `split_details` contains `Aisha 1; Rohan 1; Priya 1; Sam 1`. The note even says "split_type says equal but someone added shares anyway".
+
+**What I did**: Ignore the `split_details` when `split_type=equal`. Just split equally.
+
+### 2.13 Split type is empty
+
+Row 13 (`Rohan paid Aisha back`) has no `split_type`. This is a settlement, not an expense. I detect this and convert it into a Settlement record instead.
+
+**What I did**: If `split_type` is empty AND the description matches settlement words ("paid back", "deposit share", etc.) AND only one person is in `split_with`, I treat the row as a settlement and skip the expense creation.
+
+### 2.14 Settlements mixed in with expenses
+
+Several rows are actually settlements, not expenses:
+- Row 13: `Rohan paid Aisha back, 5000` (settlement)
+- Row 37: `Sam deposit share, 15000` (deposit split, kind of settlement-like)
+
+**What I did**: My settlement detector looks for keywords like "paid back", "deposit share", and any negative amount. When matched, I create a Settlement record instead of an Expense. Otherwise I keep it as an expense with a warning.
+
+### 2.15 Duplicates within the CSV
+
+Rows 4 and 5 are both `dinner at Marina Bites` on the same date, same amount, same payer. Logged twice.
+
+**What I did**: I flag both as duplicates but don't auto-dedupe. I can't tell which is the "real" one, so the user picks.
+
+### 2.16 Duplicates with existing expenses in the database
+
+Same idea but against expenses already imported from a previous CSV.
+
+**What I did**: Flag with a warning. Don't auto-merge.
+
+### 2.17 Someone who's not a member anymore is still in the splits
+
+Meera left the group at the end of March. But rows 32, 33, 34, 36 still mention her in the split list. These would fail validation because she's no longer an active member.
+
+**What I did**: My member-validation logic checks the expense's date against each person's `joined_at` / `left_at`. If the person was a member on that date, they're allowed. After Meera's `left_at`, any row listing her gets an `unknown_participant` error and the user has to drop her from the split.
+
+### 2.18 Members who joined late are charged from day one
+
+Sam joined the group in April. But if I include him in any February or March expense, that's wrong.
+
+**What I did**: Same date-based check. Sam only gets included in expenses dated on or after his `joined_at`.
+
+### 2.19 Currency is `INR` but the trip was in Goa with USD expenses
+
+The group's default currency is INR, but the Goa expenses are in USD. I don't convert — each row keeps its own currency.
+
+### 2.20 Numbers have commas in them
+
+Row 6 (`Electricity Feb`) has `1,200` as the amount.
+
+**What I did**: Strip commas before parsing. So `1,200` becomes `1200.00`.
+
+### 2.21 Whitespace around amounts
+
+Row 28 (`Electricity Mar`) has ` 1450 ` with spaces around it.
+
+**What I did**: Trim whitespace before parsing.
+
+### 2.22 Equal split with only one person
+
+Row 37 (`Sam deposit share`) has `split_with = Aisha` — just one person.
+
+**What I did**: Treat as settlement if there's no split_type and the description matches settlement words.
 
 ---
 
-## 4. Database Schema
+## 3. How I Group Anomalies in the UI
 
-### 4.1 Entity-Relationship Diagram
+When the user opens the review screen, I don't show 42 separate warnings. I group them by anomaly type + the exact problem. For example:
+
+| Group | How many rows | What the problem is |
+|-------|---------------|---------------------|
+| 1 | 24 rows | `Meera` shows up but she's no longer a member |
+| 2 | 13 rows | Date is in DD/MM/YYYY — could be misread as MM/DD/YYYY |
+| 3 | 4 rows | Currency is USD on a group that defaults to INR |
+| 4 | 2 rows | Percentages add up to 110% instead of 100% |
+| 5 | 2 rows | Description looks like a settlement but the row was imported as an expense |
+| 6 | 1 each | Missing payer, empty currency, zero amount, weird `Mar 14` date, etc. |
+
+When the user clicks "Approve All" on a group, it applies to every row in that group.
+
+---
+
+## 4. What Anomaly Types I Built
+
+Here's the full list. I gave each one a stable ID so the code can branch on it.
+
+| ID | Severity | What it means |
+|----|----------|---------------|
+| `ambiguous_date` | warning | Date could be DD/MM or MM/DD — confirm |
+| `unparseable_date` | error | Date doesn't match any format I know |
+| `currency_mismatch_group` | warning | Currency isn't the group's default |
+| `invalid_currency` | error | Currency is empty or unknown |
+| `missing_payer` | error | `paid_by` is empty |
+| `unknown_participant` | error | A name in the row doesn't match any member |
+| `name_fuzzy_mismatch` | warning | Name matched but only via fuzzy logic |
+| `case_mismatch` | warning | Casing was off but matched anyway |
+| `name_variation` | warning | Two members share a name (Priya vs Priya S) |
+| `negative_amount` | warning | Amount is negative (refund?) |
+| `zero_amount` | error | Amount is zero — looks like a placeholder |
+| `invalid_split_type` | error | `split_type` is empty or not one of the four valid ones |
+| `invalid_percentages` | error | Percentages don't add up to 100 |
+| `split_details_format_mismatch` | warning | `split_details` is filled but `split_type=equal` |
+| `settlement_as_expense` | warning | Description looks like a settlement |
+| `duplicate_within_csv` | warning | Same row appears twice in the CSV |
+| `duplicate_with_existing` | warning | Row matches something already in the database |
+| `member_not_active_on_date` | info | User wasn't a member on the expense date |
+
+---
+
+## 5. The Database Schema
+
+### 5.1 How the Tables Connect
 
 ```
-┌─────────────┐         ┌─────────────┐         ┌─────────────┐
-│    users    │◄────────│ group_      │────────►│   groups    │
-│             │  N:1    │  members    │  N:1    │             │
-└─────────────┘         └─────────────┘         └─────────────┘
-       ▲                                                ▲
-       │ N:1                                            │ 1:N
-       │                                                │
-┌─────────────┐                                ┌─────────────┐
-│  expenses   │────────────────────────────────│  expenses   │
-│  (paid_by)  │                                │  (group_id) │
-└─────────────┘                                └─────────────┘
-       ▲
-       │ 1:N
-       │
-┌──────────────────┐                  ┌──────────────────┐
-│ expense_         │                  │   settlements    │
-│ participants     │                  │   (from→to)      │
-└──────────────────┘                  └──────────────────┘
+users ──┐
+        │ (member of)
+        ▼
+    group_members ◄──── groups
+        │                   │
+        │                   │ (owns)
+        │                   ▼
+        │              expenses
+        │                   │
+        │                   │ (split between)
+        │                   ▼
+        │          expense_participants
+        │
+        └──── (paid_by, paid_to) ──── settlements
 
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  import_jobs     │───►│import_anomalies  │    │ import_reports   │
-│                  │    │                  │    │                  │
-└──────────────────┘    └──────────────────┘    └──────────────────┘
+import_jobs ──► import_anomalies
+import_jobs ──► import_reports
 ```
 
-### 4.2 Tables
+### 5.2 The Tables
 
 #### `users`
-Stores every Clerk user that signs in.
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | internal |
-| `clerk_id` | VARCHAR UNIQUE | Clerk external ID |
-| `email` | VARCHAR | |
-| `full_name` | VARCHAR NULL | |
-| `avatar_url` | VARCHAR NULL | |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
+Every person who signs up with Clerk.
+- `id` — UUID, primary key (our internal ID)
+- `clerk_id` — Clerk's external ID, unique
+- `email`
+- `full_name` — nullable
+- `avatar_url` — nullable
+- `created_at`, `updated_at`
 
 #### `groups`
 A shared-expenses workspace.
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `name` | VARCHAR | |
-| `description` | TEXT NULL | |
-| `default_currency` | VARCHAR(3) | e.g. `INR` |
-| `created_by` | UUID FK → users | |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
+- `id` — UUID, primary key
+- `name`
+- `description` — nullable
+- `default_currency` — like `INR`
+- `created_by` — who made the group
+- `created_at`, `updated_at`
 
 #### `group_members`
-Many-to-many with timeline.
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `group_id` | UUID FK → groups | ON DELETE CASCADE |
-| `user_id` | UUID FK → users | |
-| `role` | VARCHAR(50) | `admin` or `member` |
-| `joined_at` | TIMESTAMPTZ | when user joined |
-| `left_at` | TIMESTAMPTZ NULL | when user left (NULL = active) |
+Who's in which group, and when.
+- `id` — UUID
+- `group_id` — which group
+- `user_id` — which user
+- `role` — `admin` or `member`
+- `joined_at` — when they joined
+- `left_at` — when they left (NULL = still active)
 
-**Constraint**: `UNIQUE(group_id, user_id, joined_at)` - a user can leave and rejoin.
+**Important**: a user can leave and rejoin. The unique constraint is `(group_id, user_id, joined_at)` so the same person can have multiple rows for different time windows.
 
 #### `expenses`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `group_id` | UUID FK → groups | ON DELETE CASCADE |
-| `paid_by` | UUID FK → users | |
-| `amount` | NUMERIC(15,4) | always > 0 (CHECK) |
-| `currency` | VARCHAR(3) | |
-| `description` | TEXT | |
-| `expense_date` | DATE | |
-| `split_type` | VARCHAR(20) | `equal` / `unequal` / `percentage` / `shares` |
-| `notes` | TEXT NULL | |
-| `created_by` | UUID FK → users | |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
+Every expense that ever happened.
+- `id` — UUID
+- `group_id`
+- `paid_by` — who actually paid
+- `amount` — always positive (database enforces this)
+- `currency`
+- `description`
+- `expense_date`
+- `split_type` — `equal`, `unequal`, `percentage`, or `shares`
+- `notes` — nullable
+- `created_by`, `created_at`, `updated_at`
 
-**Indexes**: `(group_id, expense_date)` for fast range queries.
+I index on `(group_id, expense_date)` so date-range queries are fast.
 
 #### `expense_participants`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `expense_id` | UUID FK → expenses | ON DELETE CASCADE |
-| `user_id` | UUID FK → users | ON DELETE CASCADE |
-| `share_value` | NUMERIC(15,4) NULL | raw value from `split_details` |
-| `amount_owed` | NUMERIC(15,4) | computed share |
+The "split between" list for each expense.
+- `id` — UUID
+- `expense_id`
+- `user_id`
+- `share_value` — what they wrote in the CSV (nullable)
+- `amount_owed` — what they actually owe
 
-**Constraint**: `UNIQUE(expense_id, user_id)` - one row per user per expense.
+Unique constraint on `(expense_id, user_id)` so the same person listed twice doesn't create two rows.
 
 #### `settlements`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `group_id` | UUID FK → groups | |
-| `from_user_id` | UUID FK → users | who paid |
-| `to_user_id` | UUID FK → users | who received |
-| `amount` | NUMERIC(15,4) | |
-| `currency` | VARCHAR(3) | |
-| `settlement_date` | DATE | |
-| `notes` | TEXT NULL | |
-| `created_by` | UUID FK → users | |
-| `created_at` | TIMESTAMPTZ | |
+When one person pays another to settle up.
+- `id` — UUID
+- `group_id`
+- `from_user_id` — who paid
+- `to_user_id` — who received
+- `amount`
+- `currency`
+- `settlement_date`
+- `notes` — nullable
+- `created_by`, `created_at`
 
 #### `import_jobs`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `group_id` | UUID FK → groups | |
-| `uploaded_by` | UUID FK → users | |
-| `filename` | VARCHAR(255) | |
-| `original_csv` | TEXT | raw CSV for re-parse on commit |
-| `status` | VARCHAR(30) | `parsed` / `reviewing` / `ready` / `completed` |
-| `total_rows`, `imported_rows`, `rejected_rows` | INT | |
-| `created_at`, `completed_at` | TIMESTAMPTZ | |
+Tracks each CSV upload.
+- `id` — UUID
+- `group_id`
+- `uploaded_by`
+- `filename`
+- `original_csv` — full CSV text, stored so I can re-parse on commit
+- `status` — `parsed`, `reviewing`, `ready`, or `completed`
+- `total_rows`, `imported_rows`, `rejected_rows`
+- `created_at`, `completed_at`
 
 #### `import_anomalies`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `import_job_id` | UUID FK → import_jobs | ON DELETE CASCADE |
-| `row_number` | INT | 1-indexed in original CSV |
-| `anomaly_type` | VARCHAR(50) | see catalog above |
-| `severity` | VARCHAR(20) | `error` / `warning` / `info` |
-| `message` | TEXT | human-readable |
-| `suggested_action` | JSONB NULL | what the user can do |
-| `raw_row_data` | JSONB | the full CSV row |
-| `user_decision` | VARCHAR(20) NULL | `approve` / `reject` |
-| `user_resolution` | JSONB NULL | user's override, if any |
-| `created_at`, `resolved_at` | TIMESTAMPTZ | |
+Each problem found during parsing, for the review screen.
+- `id` — UUID
+- `import_job_id`
+- `row_number` — which row in the original CSV
+- `anomaly_type` — see the catalog above
+- `severity` — `error`, `warning`, or `info`
+- `message` — human-readable description
+- `suggested_action` — JSON, optional, what the user can do
+- `raw_row_data` — JSON, the whole CSV row
+- `user_decision` — `approve` or `reject`, nullable
+- `user_resolution` — JSON, nullable, the user's override
+- `created_at`, `resolved_at`
 
 #### `import_reports`
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `import_job_id` | UUID FK → import_jobs | UNIQUE |
-| `report_data` | JSONB | counts, anomaly details, rejection reasons, policy |
-| `generated_at` | TIMESTAMPTZ | |
+Summary of what got imported.
+- `id` — UUID
+- `import_job_id` — unique, one report per job
+- `report_data` — JSON with counts, anomaly breakdown, policy used
+- `generated_at`
 
-### 4.3 Assumptions
+---
 
-1. **Single-currency expenses**: each `expense` row stores its own `currency`. Balances within a group are computed per-user but stored as strings; we don't auto-convert across currencies. The Dashboard shows them as-is.
-2. **Membership timeline**: `joined_at` and `left_at` are TIMESTAMPTZ. `is_active()` checks `now BETWEEN joined_at AND left_at`. For historical expenses, we use the expense's date instead of `now`.
-3. **Soft delete for members**: we don't hard-delete memberships; we set `left_at`. This preserves expense history.
-4. **Anomaly UUIDs**: anomaly `suggested_action.options` may contain `user_id`s. These are serialized as strings (never UUID objects) to avoid JSON serialization errors.
-5. **Decimal precision**: amounts stored as `NUMERIC(15,4)` (4 decimal places) but UI strips trailing zeros via `formatAmount()`.
-6. **Payer membership on expense date**: required. Backend validates the payer was an active member on the date the expense occurred (using `joined_at <= date AND (left_at IS NULL OR left_at > date)`).
-7. **Duplicate participants**: deduped by `user_id` before insert (same person listed twice in `split_with` doesn't create two shares).
+## 6. Assumptions I Baked In
+
+These are the things I just decided and didn't ask the user about. If any of them are wrong, the code needs to change.
+
+1. **One currency per expense, no auto-conversion.** Each expense row stores its own currency. If a Goa villa is in USD and groceries are in INR, I keep them separate. I don't convert using exchange rates because (a) I don't have a reliable rate feed, and (b) the user might not want it. Balances are shown as-is.
+
+2. **Memberships have a timeline.** `joined_at` and `left_at` are timestamps. "Active member" means `now BETWEEN joined_at AND left_at`. For historical expenses, "active" means "active on the expense's date". So Meera shows up in February expenses but not May ones.
+
+3. **Members are soft-deleted.** Nobody gets removed from `group_members` outright. We just set `left_at`. This keeps the expense history accurate — Meera still has a row, she's just marked as left.
+
+4. **Anomaly UUIDs get serialized as strings.** If the suggested action includes a `user_id`, I always send it as a string. UUID objects don't survive JSON serialization cleanly and I got bitten by this early on.
+
+5. **Amounts are stored as decimals with 4 places, displayed with 2.** Backend stores `NUMERIC(15,4)`. The frontend trims trailing zeros for display. So `5000.0000` becomes `5000` on screen.
+
+6. **The payer has to be an active member on the expense date.** I validate this on the backend before creating the expense. Can't pay if you weren't part of the group at that time.
+
+7. **Duplicate participants are deduped.** If someone appears twice in `split_with` (e.g., `Priya;Priya`), I only create one participant row.
+
+8. **Indian-style dates win.** When a date is ambiguous, I pick DD/MM/YYYY because the test group uses INR. If the group is in the US, this would be wrong — I'd flip the default.
+
+9. **Percentages get normalized, not rejected.** When percentages don't sum to 100, I scale them proportionally. Almost always a typo (30+30+30+20 instead of 25+25+25+25), so normalizing gives correct shares.
+
+10. **Settlement detection is keyword-based, not perfect.** I look for words like "paid back" and "deposit share" in the description. False positives are possible (e.g., "Sam deposit share" was a deposit, not a settlement). The user can always override in the review screen.
+
+11. **Zero-amount rows are placeholders, not real expenses.** I reject them outright. If someone really owes $0, they don't need a row for it.
+
+12. **CSV import never touches existing data unless explicitly told.** I never auto-update or merge. New CSV uploads only add new rows.
+
+13. **Decimal precision is enough.** For rent of 48000 INR split 4 ways, that's 12000 each. No fractions of a paisa. The 4-decimal storage is just defensive.
