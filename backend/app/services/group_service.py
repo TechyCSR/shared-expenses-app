@@ -100,15 +100,34 @@ class GroupService:
         if not user:
             raise NotFoundError("User not found")
 
-        existing = self.session.execute(
+        # Check for an active membership first
+        active = self.session.execute(
             select(GroupMember).where(
                 GroupMember.group_id == group_id,
                 GroupMember.user_id == user.id,
                 GroupMember.left_at.is_(None)
             )
         )
-        if existing.scalar_one_or_none():
+        if active.scalar_one_or_none():
             raise ConflictError("User is already a member")
+
+        # Check for a previous (left) membership — reactivate it instead of creating a duplicate
+        past = self.session.execute(
+            select(GroupMember)
+            .where(
+                GroupMember.group_id == group_id,
+                GroupMember.user_id == user.id,
+                GroupMember.left_at.is_not(None)
+            )
+            .order_by(GroupMember.left_at.desc())
+            .limit(1)
+        )
+        past_membership = past.scalar_one_or_none()
+        if past_membership:
+            past_membership.left_at = None
+            past_membership.role = role
+            self.session.flush()
+            return past_membership
 
         membership = GroupMember(
             group_id=group_id,

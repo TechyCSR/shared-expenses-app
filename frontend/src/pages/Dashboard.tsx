@@ -111,6 +111,9 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <h3 className="font-medium text-white mb-1 truncate group-hover:text-gray-100">{group.name}</h3>
+                    {group.description && (
+                      <p className="text-xs text-gray-500 mb-2 line-clamp-2">{group.description}</p>
+                    )}
                     <p className="text-xs text-gray-500">
                       {group.member_count} member{group.member_count !== 1 ? "s" : ""}
                     </p>

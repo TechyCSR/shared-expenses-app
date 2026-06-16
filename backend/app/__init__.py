@@ -4,6 +4,7 @@ from flask_cors import CORS
 
 from app.config import settings
 from app.extensions import init_extensions
+from app.utils.exceptions import AppException
 
 
 def create_app() -> Flask:
@@ -35,6 +36,30 @@ def create_app() -> Flask:
     @app.errorhandler(405)
     def method_not_allowed(e):
         return jsonify({"success": False, "error": {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed"}}), 405
+
+    @app.errorhandler(AppException)
+    def handle_app_exception(e: AppException):
+        # Map exception class to HTTP status code
+        status_map = {
+            "ValidationError": 400,
+            "BadRequestError": 400,
+            "AuthorizationError": 401,
+            "ForbiddenError": 403,
+            "NotFoundError": 404,
+            "ConflictError": 409,
+        }
+        code_map = {
+            "ValidationError": "VALIDATION_ERROR",
+            "BadRequestError": "BAD_REQUEST",
+            "AuthorizationError": "UNAUTHORIZED",
+            "ForbiddenError": "FORBIDDEN",
+            "NotFoundError": "NOT_FOUND",
+            "ConflictError": "CONFLICT",
+        }
+        exc_name = type(e).__name__
+        status = status_map.get(exc_name, 400)
+        code = code_map.get(exc_name, "BAD_REQUEST")
+        return jsonify({"success": False, "error": {"code": code, "message": str(e)}}), status
 
     @app.errorhandler(500)
     def internal_error(e):

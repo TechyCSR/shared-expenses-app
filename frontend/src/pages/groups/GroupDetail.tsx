@@ -20,6 +20,7 @@ export default function GroupDetail() {
   const [searchResults, setSearchResults] = useState<Array<{id: string; clerk_id: string; email: string; full_name: string | null}>>([])
   const [searching, setSearching] = useState(false)
   const [addEmail, setAddEmail] = useState("")
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
   const [addRole, setAddRole] = useState("member")
   const [expandedBalanceUser, setExpandedBalanceUser] = useState<string | null>(null)
   const [expenseFilter, setExpenseFilter] = useState<"all" | "mine" | "i_paid" | "i_owe">("all")
@@ -74,10 +75,21 @@ export default function GroupDetail() {
       setAddEmail("")
       setSearchResults([])
       setSearchQuery("")
+      setAddMemberError(null)
     },
     onError: (err: any) => {
       console.error("Failed to add member:", err)
-      alert(err?.response?.data?.error?.message || "Failed to add member")
+      const code = err?.response?.data?.error?.code
+      const message = err?.response?.data?.error?.message
+      if (code === "NOT_FOUND") {
+        setAddMemberError(`No user found with email "${err?.config?.data ? JSON.parse(err.config.data).email : ''}". They need to sign up first.`)
+      } else if (code === "CONFLICT") {
+        setAddMemberError(message || "User is already a member of this group.")
+      } else if (code === "FORBIDDEN") {
+        setAddMemberError("Only group admins can add members.")
+      } else {
+        setAddMemberError(message || "Failed to add member. Please try again.")
+      }
     },
   })
 
@@ -345,7 +357,7 @@ export default function GroupDetail() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => setShowAddMember(!showAddMember)}
+                  onClick={() => { setShowAddMember(!showAddMember); setAddMemberError(null) }}
                 >
                   {showAddMember ? "Cancel" : "+ Add Member"}
                 </Button>
@@ -368,6 +380,7 @@ export default function GroupDetail() {
                       value={searchQuery}
                       onChange={(e) => {
                         setSearchQuery(e.target.value)
+                        setAddMemberError(null)
                         searchUsers(e.target.value)
                       }}
                     />
@@ -409,7 +422,7 @@ export default function GroupDetail() {
                         placeholder="user@example.com"
                         className="flex-1 px-3 py-2 border-2 border-gray-600 rounded text-sm bg-black text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-white placeholder-gray-500"
                         value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
+                        onChange={(e) => { setAddEmail(e.target.value); setAddMemberError(null) }}
                       />
                       <select
                         value={addRole}
@@ -429,8 +442,8 @@ export default function GroupDetail() {
                     </div>
                   </div>
 
-                  {addMemberMutation.isError && (
-                    <p className="text-xs text-red-400">Failed to add member. User may not exist.</p>
+                  {(addMemberMutation.isError || addMemberError) && (
+                    <p className="text-xs text-red-400">{addMemberError || "Failed to add member. Please try again."}</p>
                   )}
                 </CardContent>
               </Card>
