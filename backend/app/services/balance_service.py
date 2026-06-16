@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Expense, ExpenseParticipant, Settlement, GroupMember
+from app.models import Expense, ExpenseParticipant, Settlement, GroupMember, User
 from app.utils.currency import normalize_amount
 from app.utils.exceptions import NotFoundError
 
@@ -26,6 +26,9 @@ class BalanceService:
         settlements = self._get_settlements_in_range(group_id, start_date, end_date)
         memberships = self._get_active_memberships(group_id, start_date, end_date)
 
+        # Build member names mapping
+        member_names = self._get_member_names(group_id, memberships)
+
         user_balances = defaultdict(lambda: {
             "paid": Decimal("0"),
             "owed": Decimal("0"),
@@ -39,6 +42,7 @@ class BalanceService:
 
         for expense in expenses:
             payer_id = expense.paid_by
+            payer_name = member_names.get(str(payer_id), "Unknown")
             user_balances[payer_id]["paid"] += expense.amount
             user_balances[payer_id]["paid_details"].append({
                 "type": "expense_paid",
@@ -62,26 +66,30 @@ class BalanceService:
                     })
 
         for settlement in settlements:
+            to_name = member_names.get(str(settlement.to_user_id), "Unknown")
+            from_name = member_names.get(str(settlement.from_user_id), "Unknown")
             user_balances[settlement.from_user_id]["sent"] += settlement.amount
             user_balances[settlement.from_user_id]["sent_details"].append({
                 "type": "settlement_sent",
                 "settlement_id": settlement.id,
-                "description": settlement.notes or f"Paid to {settlement.to_user_id}",
+                "description": settlement.notes or f"Paid to {to_name}",
                 "amount": settlement.amount,
                 "currency": settlement.currency,
                 "date": settlement.settlement_date,
                 "counterparty": str(settlement.to_user_id),
+                "counterparty_name": to_name,
             })
 
             user_balances[settlement.to_user_id]["received"] += settlement.amount
             user_balances[settlement.to_user_id]["received_details"].append({
                 "type": "settlement_received",
                 "settlement_id": settlement.id,
-                "description": settlement.notes or f"Received from {settlement.from_user_id}",
+                "description": settlement.notes or f"Received from {from_name}",
                 "amount": settlement.amount,
                 "currency": settlement.currency,
                 "date": settlement.settlement_date,
                 "counterparty": str(settlement.from_user_id),
+                "counterparty_name": from_name,
             })
 
         results = []
@@ -99,7 +107,10 @@ class BalanceService:
                 },
             })
 
-        return {"balances": results}
+        # Calculate pairwise debts
+        debts = self._calculate_debts(results, member_names)
+
+        return {"balances": results, "member_names": member_names, "debts": debts}
 
     def get_user_balance(
         self,
@@ -174,6 +185,58 @@ class BalanceService:
         for m in memberships:
             membership_map[m.user_id].append(m)
         return membership_map
+
+    def _get_member_names(self, group_id, memberships) -> dict:
+        """Build {user_id: full_name} mapping for group members."""
+        names = {}
+        all_user_ids = set()
+        for user_id in memberships:
+            all_user_ids.add(user_id)
+        if not all_user_ids:
+            return names
+
+        query = select(User).where(User.id.in_(list(all_user_ids)))
+        result = self.session.execute(query)
+        for user in result.scalars().all():
+            names[str(user.id)] = user.full_name or user.email or "Unknown"
+        return names
+
+    def _calculate_debts(self, balances_list, member_names) -> list:
+        """Simplify group balances to pairwise debts using greedy approach."""
+        creditors = []
+        debtors = []
+        for b in balances_list:
+            uid = b["user_id"]
+            bal = float(b["balance"])
+            if bal > 0:
+                creditors.append({"user_id": str(uid), "amount": bal})
+            elif bal < 0:
+                debtors.append({"user_id": str(uid), "amount": abs(bal)})
+
+        # Sort by amount (largest first) for cleaner output
+        creditors.sort(key=lambda x: x["amount"], reverse=True)
+        debtors.sort(key=lambda x: x["amount"], reverse=True)
+
+        debts = []
+        for debtor in debtors:
+            for creditor in creditors:
+                if abs(debtor["amount"]) < 0.01:
+                    break
+                if creditor["amount"] < 0.01:
+                    continue
+                settled = min(debtor["amount"], creditor["amount"])
+                debts.append({
+                    "from_user_id": debtor["user_id"],
+                    "from_name": member_names.get(debtor["user_id"], "Unknown"),
+                    "to_user_id": creditor["user_id"],
+                    "to_name": member_names.get(creditor["user_id"], "Unknown"),
+                    "amount": round(settled, 2),
+                    "currency": "INR",
+                })
+                debtor["amount"] -= settled
+                creditor["amount"] -= settled
+
+        return debts
 
     def _is_member_on_date(
         self,

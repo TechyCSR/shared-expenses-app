@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import Layout from "@/components/Layout"
 import Loading from "@/components/ui/Loading"
-import type { Group, GroupMember, Expense } from "@/types"
+import type { Group, GroupMember, Expense, GroupBalances as BalanceType } from "@/types"
 import { useUser } from "@clerk/clerk-react"
 import { formatAmount } from "@/utils/format"
 
@@ -21,6 +21,9 @@ export default function GroupDetail() {
   const [searching, setSearching] = useState(false)
   const [addEmail, setAddEmail] = useState("")
   const [addRole, setAddRole] = useState("member")
+  const [expandedBalanceUser, setExpandedBalanceUser] = useState<string | null>(null)
+  const [expenseFilter, setExpenseFilter] = useState<"all" | "mine" | "i_paid" | "i_owe">("all")
+  const [expenseSort, setExpenseSort] = useState<"date_desc" | "date_asc" | "amount_desc" | "amount_asc" | "name">("date_desc")
 
   const { data: group, isLoading: groupLoading } = useQuery({
     queryKey: ["group", id],
@@ -49,6 +52,15 @@ export default function GroupDetail() {
     enabled: !!id,
     placeholderData: (prev) => prev,
     staleTime: 10_000,
+  })
+
+  const { data: balancesData, isLoading: balancesLoading } = useQuery({
+    queryKey: ["balances", id],
+    queryFn: async () => {
+      const res = await api.get(`/groups/${id}/balances`)
+      return res.data.data as BalanceType
+    },
+    enabled: !!id && tab === "balances",
   })
 
   const addMemberMutation = useMutation({
@@ -123,6 +135,12 @@ export default function GroupDetail() {
   const pastMembers = members?.filter(m => !m.is_active) || []
   const isAdmin = members?.some(m => m.clerk_id === user?.id && m.role === "admin" && m.is_active)
 
+  // Build a name lookup for resolving paid_by and participant user_ids
+  const memberNameMap: Record<string, string> = {}
+  members?.forEach(m => {
+    if (m.user_id) memberNameMap[m.user_id] = m.full_name || m.email
+  })
+
   return (
     <Layout>
       <div className="max-w-5xl mx-auto px-6 py-6">
@@ -189,32 +207,132 @@ export default function GroupDetail() {
                   <p className="text-gray-500 text-sm">No expenses yet</p>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="space-y-2">
-                {expensesData.expenses.map((expense: Expense) => (
-                  <Card key={expense.id} className="bg-[#0a0a0a] border-gray-800 hover:border-gray-700 transition-colors py-3 px-4">
-                    <div className="flex items-center justify-between">
-                      <Link to={`/groups/${id}/expenses/${expense.id}`} className="flex-1">
-                        <div>
-                          <p className="font-medium text-sm text-white">{expense.description}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {expense.expense_date} · {expense.payer_name || expense.paid_by.slice(0, 8)}
-                          </p>
-                        </div>
-                      </Link>
-                      <div className="flex items-center gap-3">
-                        <p className="font-medium text-sm text-white">{formatAmount(expense.amount)} {expense.currency}</p>
-                        <Link to={`/groups/${id}/expenses/${expense.id}/edit`} className="text-gray-400 hover:text-white p-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </Link>
+            ) : (() => {
+                const currentClerkId = user?.id
+                const myInternalId = members?.find(m => m.clerk_id === currentClerkId)?.user_id
+
+                const filtered = expensesData.expenses.filter((e: Expense) => {
+                  if (expenseFilter === "all") return true
+                  if (expenseFilter === "i_paid") return e.paid_by === myInternalId || e.paid_by === currentClerkId
+                  if (expenseFilter === "i_owe") {
+                    return e.participants?.some(p => p.user_id === myInternalId) || false
+                  }
+                  if (expenseFilter === "mine") {
+                    const isPayer = e.paid_by === myInternalId || e.paid_by === currentClerkId
+                    const isParticipant = e.participants?.some(p => p.user_id === myInternalId) || false
+                    return isPayer || isParticipant
+                  }
+                  return true
+                })
+
+                const sorted = [...filtered].sort((a, b) => {
+                  if (expenseSort === "date_desc") return a.expense_date < b.expense_date ? 1 : -1
+                  if (expenseSort === "date_asc") return a.expense_date > b.expense_date ? 1 : -1
+                  if (expenseSort === "amount_desc") return parseFloat(b.amount) - parseFloat(a.amount)
+                  if (expenseSort === "amount_asc") return parseFloat(a.amount) - parseFloat(b.amount)
+                  if (expenseSort === "name") return a.description.localeCompare(b.description)
+                  return 0
+                })
+
+                return (
+                  <div>
+                    {/* Filter pills + Sort */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ["all", "All"],
+                          ["mine", "My Expenses"],
+                          ["i_paid", "I Paid"],
+                          ["i_owe", "I Owe"],
+                        ] as const).map(([key, label]) => (
+                          <button
+                            key={key}
+                            onClick={() => setExpenseFilter(key)}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                              expenseFilter === key
+                                ? "bg-white text-black"
+                                : "bg-gray-900 text-gray-400 hover:text-white border border-gray-800"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
+                      <select
+                        value={expenseSort}
+                        onChange={(e) => setExpenseSort(e.target.value as typeof expenseSort)}
+                        className="px-3 py-1.5 text-xs bg-gray-900 border border-gray-800 rounded-md text-gray-300 focus:outline-none focus:ring-1 focus:ring-white"
+                      >
+                        <option value="date_desc">Newest first</option>
+                        <option value="date_asc">Oldest first</option>
+                        <option value="amount_desc">Amount: high → low</option>
+                        <option value="amount_asc">Amount: low → high</option>
+                        <option value="name">Name (A–Z)</option>
+                      </select>
                     </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+
+                    {sorted.length === 0 ? (
+                      <Card className="bg-[#0a0a0a] border-gray-800">
+                        <CardContent className="py-8 text-center">
+                          <p className="text-gray-500 text-sm">No expenses match this filter</p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="space-y-2">
+                        {sorted.map((expense: Expense) => {
+                          const myParticipant = expense.participants?.find(p => p.user_id === myInternalId)
+                          const myShare = myParticipant ? parseFloat(myParticipant.amount_owed) : 0
+                          const iPaid = expense.paid_by === myInternalId || expense.paid_by === currentClerkId
+                          const splitBadge = {
+                            equal: "Equal",
+                            unequal: "Unequal",
+                            percentage: "% Split",
+                            shares: "Shares",
+                          }[expense.split_type] || expense.split_type
+
+                          return (
+                            <Card key={expense.id} className={`bg-[#0a0a0a] border-gray-800 hover:border-gray-700 transition-colors py-3 px-4 ${iPaid ? "border-l-2 border-l-green-500" : myShare > 0 ? "border-l-2 border-l-red-500" : ""}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <Link to={`/groups/${id}/expenses/${expense.id}`} className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-medium text-sm text-white truncate">{expense.description}</p>
+                                    <span className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded">
+                                      {splitBadge}
+                                    </span>
+                                    {iPaid && (
+                                      <span className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 bg-green-900/40 text-green-400 rounded">
+                                        You paid
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {expense.expense_date} · {expense.payer_name || memberNameMap[expense.paid_by] || expense.paid_by.slice(0, 8)}
+                                    {myShare > 0 && !iPaid && (
+                                      <span className="text-red-400"> · your share: {formatAmount(String(myShare))}</span>
+                                    )}
+                                    {iPaid && myParticipant && (
+                                      <span className="text-gray-500"> · your share: {formatAmount(String(myShare))}</span>
+                                    )}
+                                  </p>
+                                </Link>
+                                <div className="flex items-center gap-3 shrink-0">
+                                  <p className="font-medium text-sm text-white">{formatAmount(expense.amount)} {expense.currency}</p>
+                                  <Link to={`/groups/${id}/expenses/${expense.id}/edit`} className="text-gray-400 hover:text-white p-1">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </Link>
+                                </div>
+                              </div>
+                            </Card>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()
+            }
           </div>
         )}
 
@@ -377,9 +495,156 @@ export default function GroupDetail() {
 
         {tab === "balances" && (
           <div>
-            <Link to={`/groups/${id}/balances`}>
-              <Button variant="secondary" size="sm">View Detailed Balances</Button>
-            </Link>
+            {balancesLoading ? (
+              <Loading message="Loading balances..." />
+            ) : (
+              <>
+                {/* Who owes whom summary */}
+                {balancesData && balancesData.debts && balancesData.debts.length > 0 && (
+                  <Card className="bg-[#0a0a0a] border-gray-800 mb-4">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-white uppercase tracking-wide">Who Owes Whom</h3>
+                        <Link to={`/groups/${id}/balances`} className="text-xs text-gray-400 hover:text-white">
+                          View details →
+                        </Link>
+                      </div>
+                      <div className="space-y-2">
+                        {balancesData.debts.map((d, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm py-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-400 font-medium">{d.from_name}</span>
+                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                              </svg>
+                              <span className="text-green-400 font-medium">{d.to_name}</span>
+                            </div>
+                            <span className="text-white font-semibold">{formatAmount(String(d.amount))} {d.currency}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Per-user balance cards */}
+                {!balancesData?.balances || balancesData.balances.length === 0 ? (
+                  <Card className="bg-[#0a0a0a] border-gray-800">
+                    <CardContent className="py-8 text-center">
+                      <p className="text-gray-500 text-sm">No balances yet</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {balancesData.balances.map((balance) => {
+                      const isExpanded = expandedBalanceUser === balance.user_id
+                      const balanceNum = parseFloat(balance.balance)
+                      const isPositive = balanceNum >= 0
+                      const name = balancesData.member_names?.[balance.user_id] || `User ${balance.user_id.slice(0, 8)}`
+                      const items = [
+                        ...balance.breakdown.expenses_paid,
+                        ...balance.breakdown.expenses_owed,
+                        ...balance.breakdown.settlements_received,
+                        ...balance.breakdown.settlements_sent,
+                      ]
+                      return (
+                        <Card key={balance.user_id} className="bg-[#0a0a0a] border-gray-800">
+                          <CardContent className="p-0">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedBalanceUser(isExpanded ? null : balance.user_id)}
+                              className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-900/40 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-sm font-semibold text-white">
+                                  {name.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-white font-medium">{name}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className={`text-lg font-semibold ${isPositive ? "text-green-400" : "text-red-400"}`}>
+                                  {isPositive ? "+" : ""}{formatAmount(balance.balance)} {balance.currency}
+                                </span>
+                                <svg className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="border-t border-gray-800 p-4 space-y-3">
+                                {balance.breakdown.expenses_paid?.length > 0 && (
+                                  <div>
+                                    <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">Paid for group</h4>
+                                    <div className="space-y-1.5">
+                                      {balance.breakdown.expenses_paid.map((item, i) => (
+                                        <Link
+                                          key={i}
+                                          to={`/groups/${id}/expenses/${item.expense_id}`}
+                                          className="flex justify-between text-sm hover:bg-gray-900/40 px-2 py-1.5 -mx-2 rounded"
+                                        >
+                                          <span className="text-gray-300">{item.description}</span>
+                                          <span className="text-green-400">+{formatAmount(item.amount)}</span>
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {balance.breakdown.expenses_owed?.length > 0 && (
+                                  <div>
+                                    <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">Owes share of</h4>
+                                    <div className="space-y-1.5">
+                                      {balance.breakdown.expenses_owed.map((item, i) => (
+                                        <Link
+                                          key={i}
+                                          to={`/groups/${id}/expenses/${item.expense_id}`}
+                                          className="flex justify-between text-sm hover:bg-gray-900/40 px-2 py-1.5 -mx-2 rounded"
+                                        >
+                                          <span className="text-gray-300">{item.description}</span>
+                                          <span className="text-red-400">-{formatAmount(item.amount)}</span>
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {balance.breakdown.settlements_received?.length > 0 && (
+                                  <div>
+                                    <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">Received settlements</h4>
+                                    <div className="space-y-1.5">
+                                      {balance.breakdown.settlements_received.map((item, i) => (
+                                        <div key={i} className="flex justify-between text-sm px-2 py-1.5">
+                                          <span className="text-gray-300">{item.description}</span>
+                                          <span className="text-green-400">+{formatAmount(item.amount)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {balance.breakdown.settlements_sent?.length > 0 && (
+                                  <div>
+                                    <h4 className="text-xs font-medium text-gray-400 uppercase mb-2">Sent settlements</h4>
+                                    <div className="space-y-1.5">
+                                      {balance.breakdown.settlements_sent.map((item, i) => (
+                                        <div key={i} className="flex justify-between text-sm px-2 py-1.5">
+                                          <span className="text-gray-300">{item.description}</span>
+                                          <span className="text-red-400">-{formatAmount(item.amount)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {items.length === 0 && (
+                                  <p className="text-xs text-gray-500 italic">No transactions</p>
+                                )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

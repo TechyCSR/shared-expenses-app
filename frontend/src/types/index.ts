@@ -129,15 +129,28 @@ export interface BalanceSummary {
 export interface BalanceItem {
   type: string
   expense_id: string | null
+  settlement_id?: string | null
   description: string
   amount: string
   currency: string
   date: string
   counterparty: string | null
+  counterparty_name?: string | null
+}
+
+export interface DebtEntry {
+  from_user_id: string
+  from_name: string
+  to_user_id: string
+  to_name: string
+  amount: number
+  currency: string
 }
 
 export interface GroupBalances {
   balances: BalanceSummary[]
+  member_names: Record<string, string>
+  debts: DebtEntry[]
 }
 
 export interface ApiResponse<T> {
