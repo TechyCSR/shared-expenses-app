@@ -112,13 +112,17 @@ class SettlementService:
         to_user_id: uuid.UUID,
         settlement_date: date,
     ) -> None:
+        # Compare against end-of-day in UTC so a member who joined any time during the
+        # settlement_date counts as active, matching the rule in expense_service.
+        from datetime import datetime, time, timezone
+        settlement_datetime = datetime.combine(settlement_date, time.max, tzinfo=timezone.utc)
         for user_id in [from_user_id, to_user_id]:
             result = self.session.execute(
                 select(GroupMember).where(
                     GroupMember.group_id == group_id,
                     GroupMember.user_id == user_id,
-                    GroupMember.joined_at <= settlement_date,
-                    GroupMember.left_at.is_(None) | (GroupMember.left_at > settlement_date)
+                    GroupMember.joined_at <= settlement_datetime,
+                    GroupMember.left_at.is_(None) | (GroupMember.left_at > settlement_datetime)
                 )
             )
             if not result.scalar_one_or_none():

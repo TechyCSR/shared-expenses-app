@@ -1,6 +1,8 @@
 import traceback
 from flask import Flask, jsonify
 from flask_cors import CORS
+from sqlalchemy.exc import OperationalError as SAOperationalError
+from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
 from app.extensions import init_extensions
@@ -66,6 +68,22 @@ def create_app() -> Flask:
         if settings.DEBUG:
             traceback.print_exc()
         return jsonify({"success": False, "error": {"code": "INTERNAL_ERROR", "message": "Internal server error"}}), 500
+
+    @app.errorhandler(SAOperationalError)
+    @app.errorhandler(DBAPIError)
+    def handle_db_unavailable(e):
+        # Connection-level failures (SSL closed by upstream proxy, server gone away,
+        # pool exhausted) shouldn't leak a 500 with a Python traceback to the client.
+        # Return a clean 503 so the frontend can retry.
+        if settings.DEBUG:
+            traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Database is temporarily unavailable. Please try again.",
+            },
+        }), 503
 
     @app.route("/health")
     def health():

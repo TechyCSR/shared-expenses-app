@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models import Group, GroupMember, User
-from app.utils.exceptions import NotFoundError, ForbiddenError, ConflictError
+from app.utils.exceptions import NotFoundError, ForbiddenError, ConflictError, ValidationError
 
 
 class GroupService:
@@ -95,8 +95,19 @@ class GroupService:
         self._check_admin(group_id, admin_id)
         group = self.get_group(group_id)
 
-        result = self.session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        # Email lookup is case-insensitive and tolerates leading/trailing whitespace.
+        # Use .first() rather than scalar_one_or_none() because User.email is not unique
+        # (Clerk allows the same address on multiple accounts), and we don't want a
+        # 500 if more than one row matches. We pick the most-recently-created match.
+        normalized_email = (email or "").strip().lower()
+        if not normalized_email:
+            raise ValidationError("Email is required")
+        result = self.session.execute(
+            select(User)
+            .where(func.lower(User.email) == normalized_email)
+            .order_by(User.created_at.desc())
+        )
+        user = result.scalars().first()
         if not user:
             raise NotFoundError("User not found")
 
@@ -125,7 +136,9 @@ class GroupService:
         past_membership = past.scalar_one_or_none()
         if past_membership:
             past_membership.left_at = None
-            past_membership.role = role
+            # Don't downgrade a former admin back to a plain member unless explicitly told to.
+            if role == "admin" or past_membership.role != "admin":
+                past_membership.role = role
             self.session.flush()
             return past_membership
 

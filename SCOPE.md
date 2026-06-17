@@ -1,170 +1,171 @@
-# What I Found While Building This Thing
+# What I Found While Building This App
 
-A plain-English log of all the weird stuff I ran into while building this app. I write this so future me (or anyone else) can understand *why* the code looks the way it does.
+> I am writing this so I can remember why the code for this app looks the way it does. I want to make sure that I can understand what I did and why I did it.
 
-This file covers:
-1. The CSV file we use for testing and every problem I found in it
-2. How I decided to handle each problem (the policy)
-3. The database schema (boring but you need it)
-4. Assumptions I baked in (also at the bottom)
+This file talks about the things I found while building this app.
+
+The things I will talk about are:
+
+1. The CSV file we use for testing and the problems I found in it
+2. How I decided to handle each problem
+3. The database schema
+4. The things I assumed while building this app
 
 ---
 
 ## 1. The CSV File
 
-**File**: `expenses_export.csv`
-**Rows**: 42 (plus 1 header row)
-**Columns**: `date, description, paid_by, amount, currency, split_type, split_with, split_details, notes`
+The file is called `expenses_export.csv`. It has 42 rows plus one header row. The columns in this file are `date`, `description`, `paid_by`, `amount`, `currency`, `split_type`, `split_with`, `split_details` and `notes`.
 
-This is a real-looking export from a group of friends sharing expenses over a few months. I picked it on purpose because it has a lot of messy, real-world problems baked in — it's the kind of CSV that someone would actually hand you, not a clean sample file.
+This file is an example of what a group of friends might use to share expenses over a few months. I chose it because it has a lot of real-world problems that I would have to deal with.
 
-I went through the file row by row and kept notes on every weird thing. Below is everything I found.
+I went through the file row by row. Wrote down every problem I found.
 
 ---
 
-## 2. The Problems I Found (One by One)
+## 2. The Problems I Found
 
-I went through the CSV and asked myself: "what would trip up my import code?" Here's the list.
+I went through the CSV file and asked myself what would cause problems for my import code.
 
 ### 2.1 Dates are written in different formats
 
-Some dates are `2026-02-01` (ISO), some are `01/03/2026` (DD/MM/YYYY), and one is just `Mar 14`. That's three different styles in one file.
+Some dates are written like `2026-02-01` and some are written like `01/03/2026`. There is one date that is just written as `Mar 14`.
 
-**Why this matters**: If I don't parse all three, half the file fails to load.
+This is a problem because if I do not handle all of these formats some of the data will not be imported correctly.
 
-**What I did**: My parser tries ISO first, then DD/MM/YYYY, then MM/DD/YYYY, then a few named-month formats. I default to DD/MM/YYYY when it's ambiguous (because the group uses INR and feels Indian).
+What I did was make my parser try to understand the date in formats. If it is not clear what format the date is in I default to the format that is commonly used in the group.
 
-**Affected rows**: 13 of them (rows 16–28 are mostly DD/MM/YYYY, row 27 is the weird `Mar 14` one).
+This problem affected 13 rows in the file.
 
 ### 2.2 The same date can mean two things
 
-For dates like `01/03/2026`, it could be January 3 or March 1. In this group, March 1 makes sense (rent is paid at the start of the month), so I default to DD/MM/YYYY.
+For example the date `01/03/2026` could be January 3 or March 1. In this group it makes sense for it to be March 1 so that is what I default to.
 
-**What I did**: Treat it as DD/MM/YYYY by default but flag it so the user can override if needed.
+What I did was make my code assume the date is in the format that is commonly used in the group but I also make a note of it so the user can change it if they need to.
 
-**Affected rows**: 13.
+This problem affected 13 rows.
 
 ### 2.3 Currency is sometimes missing
 
-Row 27 (`Groceries DMart`) has no currency. The note says "forgot to set currency".
+One of the rows does not have a currency listed. The note for that row says that the person forgot to enter the currency.
 
-**What I did**: Show this as an error during import. Fall back to the group's default currency (INR for this group) but make the user confirm.
+What I did was make my code show an error when it imports this row. I also make my code use the group's default currency. I make the user confirm that this is what they want to do.
 
 ### 2.4 Some expenses are in USD, not INR
 
-The Goa trip (rows 19, 20, 22, 25) was paid in USD on an international site. The user kept the original currency rather than converting.
+Some of the expenses in the file are listed in USD, not INR. This is because the group paid for some things in USD when they were on a trip.
 
-**What I did**: I don't auto-convert. Each expense keeps its own currency. Balances are shown in whatever currency they were paid in.
+What I did was make my code keep track of the currency for each expense. I do not automatically convert the currency to INR.
 
-**Affected rows**: 4 (the Goa ones).
+This problem affected 4 rows.
 
-### 2.5 The "paid by" field is empty sometimes
+### 2.5 The paid_by field is empty sometimes
 
-Row 12 (`House cleaning supplies`) has nobody listed. The note says "can't remember who paid".
+One of the rows does not have anyone listed as the person who paid. The note for that row says that the person cannot remember who paid.
 
-**What I did**: This is a blocker. Without knowing who paid, I can't create the expense. The row gets flagged as an error and the user has to fill it in or skip it.
+What I did was make my code show an error when it imports this row. The user has to fill in the paid_by field or skip this row.
 
-### 2.6 Names don't match exactly — casing issues
+### 2.6 Names do not match exactly
 
-Row 7 says `priya` (lowercase) but the member is `Priya`. Same person, just typed wrong.
+One of the rows has a name listed as `priya`. The actual name of the person is `Priya`.
 
-**What I did**: My matcher is case-insensitive. So `priya` = `Priya` = `PRIYA`.
+What I did was make my code not care about whether the name's written in uppercase or lowercase letters.
 
-### 2.7 Two people called Priya
+### 2.7 Two people have the same name
 
-There are `Priya` and `Priya S` in the group. The CSV uses both, sometimes in the same row's split list. I had to pick one when there's no other way to tell them apart.
+There are two people in the group named Priya. One of them has the name S but the other one does not.
 
-**What I did**: First-match-wins. So `Priya` (without the S) maps to the user named `Priya`. `Priya S` maps to the user named `Priya S`. If the user wants to override, they can in the review screen.
+What I did was make my code match the name to the person based on what it finds. If the user wants to change this they can.
 
-### 2.8 Names with extra words: "Dev's friend Kabir"
+### 2.8 Names have extra words
 
-Row 22 has `"Dev's friend Kabir"` in the split list. The actual member is just `Kabir`.
+One of the rows has a name listed as `Dev's friend Kabir`. The actual name of the person is `Kabir`.
 
-**What I did**: My fuzzy matcher tokenizes the string and looks for a name that appears inside it. `Dev's friend Kabir` → `Kabir`. Same for `"Sam"` → `Sam`, etc. If no name matches at all, I flag it.
+What I did was make my code look for the name inside the extra words.
 
-### 2.9 Negative amounts (refunds)
+### 2.9 Negative amounts
 
-Row 25 has `-30` for "Parasailing refund" because one slot got cancelled.
+One of the rows has an amount because the person got a refund.
 
-**What I did**: I allow negative amounts and just show a warning. The user can decide whether to keep it as a negative expense or convert it into a settlement from the operator to everyone who chipped in.
+What I did was make my code allow amounts but I also show a warning to the user. The user can decide what to do with the amount.
 
-### 2.10 Zero amounts (placeholders)
+### 2.10 Zero amounts
 
-Row 30 has `0` for "Dinner order Swiggy" with the note "counted twice earlier - fixing later". It's a placeholder, not a real expense.
+One of the rows has an amount of zero. The note for that row says that it was counted earlier and the person is fixing it later.
 
-**What I did**: Block it. Zero-amount rows get rejected. Better to skip than to create a fake expense.
+What I did was make my code not import rows with zero amounts.
 
-### 2.11 Percentages that don't add to 100%
+### 2.11 Percentages that do not add up to 100%
 
-Row 14 (`Pizza Friday`) has `Aisha 30%; Rohan 30%; Priya 30%; Meera 20%` — that's 110%, not 100%. Same with row 31.
+One of the rows has percentages that add up to more than 100%.
 
-**What I did**: I normalize proportionally. So the four become ~27.3% / 27.3% / 27.3% / 18.2%, which add up to 100. Almost always it's just a typo, and this gives the right proportional split.
+What I did was make my code change the percentages so they add up to 100%.
 
 ### 2.12 Equal split but shares are written anyway
 
-Row 40 (`Furniture for common room`) has `split_type=equal` but `split_details` contains `Aisha 1; Rohan 1; Priya 1; Sam 1`. The note even says "split_type says equal but someone added shares anyway".
+One of the rows has an equal split but the shares are still written.
 
-**What I did**: Ignore the `split_details` when `split_type=equal`. Just split equally.
+What I did was make my code ignore the shares when the split is equal.
 
 ### 2.13 Split type is empty
 
-Row 13 (`Rohan paid Aisha back`) has no `split_type`. This is a settlement, not an expense. I detect this and convert it into a Settlement record instead.
+One of the rows does not have a type listed.
 
-**What I did**: If `split_type` is empty AND the description matches settlement words ("paid back", "deposit share", etc.) AND only one person is in `split_with`, I treat the row as a settlement and skip the expense creation.
+What I did was make my code detect if the row's a settlement or an expense. If it is a settlement I create a Settlement record of an Expense record.
 
-### 2.14 Settlements mixed in with expenses
+### 2.14 Settlements are mixed in with expenses
 
-Several rows are actually settlements, not expenses:
-- Row 13: `Rohan paid Aisha back, 5000` (settlement)
-- Row 37: `Sam deposit share, 15000` (deposit split, kind of settlement-like)
+Some of the rows are actually settlements, not expenses.
 
-**What I did**: My settlement detector looks for keywords like "paid back", "deposit share", and any negative amount. When matched, I create a Settlement record instead of an Expense. Otherwise I keep it as an expense with a warning.
+What I did was make my code detect settlements and create a Settlement record of an Expense record.
 
 ### 2.15 Duplicates within the CSV
 
-Rows 4 and 5 are both `dinner at Marina Bites` on the same date, same amount, same payer. Logged twice.
+Some of the rows are duplicates.
 
-**What I did**: I flag both as duplicates but don't auto-dedupe. I can't tell which is the "real" one, so the user picks.
+What I did was make my code flag the duplicates. I do not automatically remove them. The user has to decide what to do with the duplicates.
 
 ### 2.16 Duplicates with existing expenses in the database
 
-Same idea but against expenses already imported from a previous CSV.
+Some of the rows are duplicates of expenses that are already in the database.
 
-**What I did**: Flag with a warning. Don't auto-merge.
+What I did was make my code flag the duplicates with a warning. I do not automatically remove them.
 
-### 2.17 Someone who's not a member anymore is still in the splits
+### 2.17 Someone who is not a member anymore is still in the splits
 
-Meera left the group at the end of March. But rows 32, 33, 34, 36 still mention her in the split list. These would fail validation because she's no longer an active member.
+One of the people in the group left. They are still listed in some of the rows.
 
-**What I did**: My member-validation logic checks the expense's date against each person's `joined_at` / `left_at`. If the person was a member on that date, they're allowed. After Meera's `left_at`, any row listing her gets an `unknown_participant` error and the user has to drop her from the split.
+What I did was make my code check if the person was a member at the time of the expense. If they were not I show an error and the user has to remove them from the split.
 
 ### 2.18 Members who joined late are charged from day one
 
-Sam joined the group in April. But if I include him in any February or March expense, that's wrong.
+One of the people in the group joined late. They are still being charged for expenses from before they joined.
 
-**What I did**: Same date-based check. Sam only gets included in expenses dated on or after his `joined_at`.
+What I did was make my code check if the person was a member at the time of the expense. If they were not I do not charge them for that expense.
 
-### 2.19 Currency is `INR` but the trip was in Goa with USD expenses
+### 2.19 Currency is INR but the trip was in Goa with USD expenses
 
-The group's default currency is INR, but the Goa expenses are in USD. I don't convert — each row keeps its own currency.
+The group's default currency is INR but some of the expenses are in USD.
+
+What I did was make my code keep track of the currency for each expense. I do not automatically convert the currency to INR.
 
 ### 2.20 Numbers have commas in them
 
-Row 6 (`Electricity Feb`) has `1,200` as the amount.
+One of the rows has a number with a comma in it.
 
-**What I did**: Strip commas before parsing. So `1,200` becomes `1200.00`.
+What I did was make my code remove the comma before it tries to understand the number.
 
 ### 2.21 Whitespace around amounts
 
-Row 28 (`Electricity Mar`) has ` 1450 ` with spaces around it.
+One of the rows has whitespace around the amount.
 
-**What I did**: Trim whitespace before parsing.
+What I did was make my code remove the whitespace before it tries to understand the amount.
 
-### 2.22 Equal split with only one person
+### 2.22 Equal split with one person
 
-Row 37 (`Sam deposit share`) has `split_with = Aisha` — just one person.
+One of the rows has an equal split but there is only one person listed.
 
-**What I did**: Treat as settlement if there's no split_type and the description matches settlement words.
+What I did was make my code treat it as a settlement if there is no type and the description matches settlement words.
 
 ---
 
